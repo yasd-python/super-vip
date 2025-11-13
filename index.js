@@ -199,13 +199,13 @@ function isValidUUID(uuid) {
 
 function isExpired(expDate, expTime) {
   if (!expDate || !expTime) return true;
-  let expTimeWithSeconds = expTime;
-  // FIX: Handle missing seconds properly
-  if (expTimeWithSeconds.split(':').length === 2) {
-    expTimeWithSeconds += ':00';
+  let expTimeSeconds = expTime;
+  if (expTime.includes(':') && expTime.split(':').length === 2) {
+    expTimeSeconds += ':00'; // Fix: Add seconds if missing
   }
-  const expDatetimeUTC = new Date(`${expDate}T${expTimeWithSeconds}Z`);
-  if (isNaN(expDatetimeUTC.getTime())) return true; // Handle invalid date
+  const cleanTime = expTimeSeconds.split('.')[0];
+  const expDatetimeUTC = new Date(`${expDate}T${cleanTime}Z`);
+  if (isNaN(expDatetimeUTC.getTime())) return true; // Fix: Handle invalid date
   return expDatetimeUTC <= new Date();
 }
 
@@ -219,7 +219,7 @@ function formatBytes(bytes) {
 
 async function kvGet(db, key, type = 'text') {
   try {
-    if (!db) return null; // Handle missing DB
+    if (!db) return null; // Fix: Handle missing DB
     const stmt = db.prepare("SELECT value, expiration FROM key_value WHERE key = ?").bind(key);
     const res = await stmt.first();
     
@@ -248,7 +248,7 @@ async function kvGet(db, key, type = 'text') {
 
 async function kvPut(db, key, value, options = {}) {
   try {
-    if (!db) return; // Handle missing DB
+    if (!db) return; // Fix: Handle missing DB
     if (typeof value === 'object') {
       value = JSON.stringify(value);
     }
@@ -267,7 +267,7 @@ async function kvPut(db, key, value, options = {}) {
 
 async function kvDelete(db, key) {
   try {
-    if (!db) return; // Handle missing DB
+    if (!db) return; // Fix: Handle missing DB
     await db.prepare("DELETE FROM key_value WHERE key = ?").bind(key).run();
   } catch (e) {
     console.error(`kvDelete error for ${key}: ${e}`);
@@ -458,7 +458,7 @@ async function checkRateLimit(db, key, limit, ttl) {
   return false;
 }
 
-// Improved: Token Bucket Rate Limiting with better burst handling
+// New: Token Bucket Rate Limiting
 async function tokenBucketRateLimit(db, key, rate, burst) {
   const now = Math.floor(Date.now() / 1000);
   const data = await kvGet(db, key, 'json') || { tokens: burst, lastRefill: now };
@@ -589,11 +589,6 @@ async function handleIpSubscription(core, userID, hostName) {
     }
   } catch (e) {
     console.error('Fetch IP list failed', e);
-    // FIX: Fallback to hardcoded IPs if fetch fails
-    const fallbackIps = ['1.1.1.1', '8.8.8.8']; // Example fallback
-    fallbackIps.forEach((ip, i) => {
-      links.push(buildLink({ core, proto: 'tls', userID, hostName, address: ip, port: pick(httpsPorts), tag: `FB${i+1}` }));
-    });
   }
 
   const headers = new Headers({ 'Content-Type': 'text/plain;charset=utf-8' });
@@ -1302,9 +1297,9 @@ const adminPanelHTML = `<!DOCTYPE html>
 </body>
 </html>`;
 
-// ============================================================================
-// ADMIN API HANDLERS
-// ============================================================================
+ // ============================================================================
+ // ADMIN API HANDLERS
+ // ============================================================================
 
 async function isAdmin(request, env) {
   const cookieHeader = request.headers.get('Cookie');
@@ -1666,7 +1661,7 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
   if (userData.traffic_limit && userData.traffic_limit > 0) {
     usagePercentage = Math.min(((userData.traffic_used || 0) / userData.traffic_limit) * 100, 100);
   } else {
-    usagePercentage = 0; // FIX: If limit 0 or null, percentage 0
+    usagePercentage = 0; // Fix: If limit 0 or null, percentage 0
   }
 
   let usagePercentageDisplay;
@@ -2260,7 +2255,7 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
         }
       };
 
-      async function fetchWithTimeout(url, timeout = 5000) { // IMPROVED: Reduced timeout for faster fail-over
+      async function fetchWithTimeout(url, timeout = 5000) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeout);
         
