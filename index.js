@@ -33,7 +33,7 @@ const Config = {
 
     if (env.D1) {
       try {
-        const { results } = await env.D1.prepare("SELECT ip FROM proxy_scans WHERE is_current_best = 1 LIMIT 1").all();
+        const { results } = await env.D1.prepare("SELECT SELECT ip FROM proxy_scans WHERE is_current_best = 1 LIMIT 1").all();
         selectedProxyIP = results[0]?.ip || null;
         if (selectedProxyIP) {
           console.log(`Using proxy IP from D1: ${selectedProxyIP}`);
@@ -293,17 +293,6 @@ async function updateUsage(env, uuid, bytes, ctx) {
     }
   } catch (err) {
     console.error(`Failed to update usage for ${uuid}:`, err);
-  }
-}
-
-async function getUserUsage(env, uuid) {
-  try {
-    const stmt = env.DB.prepare("SELECT traffic_used, traffic_limit FROM users WHERE uuid = ?").bind(uuid);
-    const res = await stmt.first();
-    return res ? { traffic_used: res.traffic_used || 0, traffic_limit: res.traffic_limit } : null;
-  } catch (e) {
-    console.error(`Failed to get usage for ${uuid}: ${e}`);
-    return null;
   }
 }
 
@@ -1953,8 +1942,8 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
       expirationDateTime: ${expirationDateTime ? `"${expirationDateTime}"` : 'null'},
       isExpired: ${isUserExpired},
       clientUrls: ${JSON.stringify(clientUrls)},
-      trafficUsed: ${userData.traffic_used || 0},
-      trafficLimit: ${userData.traffic_limit || null}
+      trafficLimit: ${userData.traffic_limit || 'null'},
+      initialTrafficUsed: ${userData.traffic_used || 0}
     };
 
     // =========================================
@@ -1997,11 +1986,12 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
 
       async generateWithLibrary(text, container) {
         try {
-          if (!this.libraryLoaded) {
-            const loaded = await this.waitForLibrary();
-            if (!loaded) {
-              throw new Error('Library not loaded');
-            }
+          let loaded = this.libraryLoaded;
+          if (!loaded) {
+            loaded = await this.waitForLibrary();
+          }
+          if (!loaded) {
+            throw new Error('Library not loaded');
           }
 
           container.innerHTML = '';
@@ -2266,6 +2256,14 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
         {
           url: 'https://api.my-ip.io/v2/ip.json',
           parse: async (r) => (await r.json()).ip
+        },
+        {
+          url: 'https://checkip.amazonaws.com',
+          parse: async (r) => (await r.text()).trim()
+        },
+        {
+          url: 'https://wtfismyip.com/text',
+          parse: async (r) => (await r.text()).trim()
         }
       ];
 
@@ -2326,6 +2324,17 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
               isp: data.connection?.isp || ''
             };
           }
+        },
+        {
+          url: clientIP ? \`https://freegeoip.app/json/\${clientIP}\` : 'https://freegeoip.app/json/',
+          parse: async (r) => {
+            const data = await r.json();
+            return {
+              city: data.city || '',
+              country: data.country_name || '',
+              isp: '' // No ISP in this API
+            };
+          }
         }
       ];
 
@@ -2376,6 +2385,15 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
               const answer = data.Answer?.find(a => a.type === 1);
               return answer?.data;
             }
+          },
+          {
+            url: \`https://1.1.1.1/dns-query?name=\${encodeURIComponent(proxyHost)}&type=A\`,
+            headers: { 'accept': 'application/dns-json' },
+            parse: async (r) => {
+              const data = await r.json();
+              const answer = data.Answer?.find(a => a.type === 1);
+              return answer?.data;
+            }
           }
         ];
 
@@ -2413,6 +2431,17 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
           parse: async (r) => {
             const data = await r.json();
             if (data.status === 'fail') throw new Error(data.message || 'API Error');
+            return {
+              city: data.city || '',
+              country: data.country || ''
+            };
+          }
+        },
+        {
+          url: \`https://ipwho.is/\${proxyIP}\`,
+          parse: async (r) => {
+            const data = await r.json();
+            if (!data.success) throw new Error('API Error');
             return {
               city: data.city || '',
               country: data.country || ''
@@ -2482,90 +2511,63 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
       }
     }
 
-    function animateProgressBar() {
+    function animateProgressBar(targetWidth) {
       const progressBar = document.getElementById('progress-bar-fill');
       if (!progressBar) return;
-      
-      const targetWidth = parseFloat(progressBar.dataset.targetWidth || '0');
       
       setTimeout(() => {
         progressBar.style.width = \`\${targetWidth}%\`;
       }, 100);
     }
 
-    async function updateUsageDisplay() {
-      try {
-        const response = await fetch('/usage/${window.CONFIG.uuid}', {
-          method: 'GET',
-          headers: { 'Accept': 'application/json' }
-        });
-        
-        if (!response.ok) {
-          throw new Error('Failed to fetch usage data');
-        }
-        
-        const data = await response.json();
-        if (!data || typeof data.traffic_used === 'undefined') {
-          throw new Error('Invalid usage data received');
-        }
-        
-        window.CONFIG.trafficUsed = data.traffic_used;
-        window.CONFIG.trafficLimit = data.traffic_limit;
-        
-        const usageDisplay = document.getElementById('usage-display');
-        if (usageDisplay) {
-          usageDisplay.textContent = formatBytes(window.CONFIG.trafficUsed);
-        }
-        
-        let usagePercentage = 0;
-        if (window.CONFIG.trafficLimit && window.CONFIG.trafficLimit > 0) {
-          usagePercentage = Math.min((window.CONFIG.trafficUsed / window.CONFIG.trafficLimit) * 100, 100);
-        }
-        
-        let usagePercentageDisplay = usagePercentage.toFixed(2) + '%';
-        if (usagePercentage > 0 && usagePercentage < 0.01) {
-          usagePercentageDisplay = '< 0.01%';
-        } else if (usagePercentage === 0) {
-          usagePercentageDisplay = '0%';
-        } else if (usagePercentage === 100) {
-          usagePercentageDisplay = '100%';
-        }
-        
-        const progressFill = document.getElementById('progress-bar-fill');
-        if (progressFill) {
-          progressFill.dataset.targetWidth = usagePercentage.toFixed(2);
-          progressFill.className = \`progress-fill \${usagePercentage > 80 ? 'high' : usagePercentage > 50 ? 'medium' : 'low'}\`;
-          animateProgressBar();
-        }
-        
-        const usageText = document.querySelector('.progress-bar + p');
-        if (usageText) {
-          usageText.textContent = \`\${formatBytes(window.CONFIG.trafficUsed)} of \${window.CONFIG.trafficLimit ? formatBytes(window.CONFIG.trafficLimit) : 'Unlimited'} used\`;
-        }
-        
-        const usageStatsTitle = document.querySelector('.section-title span.muted');
-        if (usageStatsTitle) {
-          usageStatsTitle.textContent = \`\${usagePercentageDisplay} Used\`;
-        }
-        
-        return true;
-      } catch (error) {
-        console.error('Failed to update usage data:', error);
-        showToast('Failed to update usage data', 'error');
-        return false;
-      }
-    }
-
     async function refreshUserPanel() {
       try {
-        await fetchIPInfo();
+        const response = await fetch(\`/api/user/\${window.CONFIG.uuid}\`);
+
+        if (response.ok) {
+          const data = await response.json();
+
+          const usageDisplay = document.getElementById('usage-display');
+          usageDisplay.textContent = formatBytes(data.traffic_used || 0);
+
+          let usagePercentage = 0;
+          if (data.traffic_limit && data.traffic_limit > 0) {
+            usagePercentage = Math.min(((data.traffic_used || 0) / data.traffic_limit) * 100, 100);
+          }
+
+          let usagePercentageDisplay;
+          if (usagePercentage > 0 && usagePercentage < 0.01) {
+            usagePercentageDisplay = '< 0.01%';
+          } else if (usagePercentage === 0) {
+            usagePercentageDisplay = '0%';
+          } else if (usagePercentage === 100) {
+            usagePercentageDisplay = '100%';
+          } else {
+            usagePercentageDisplay = \`\${usagePercentage.toFixed(2)}%\`;
+          }
+
+          const progressFill = document.getElementById('progress-bar-fill');
+          if (progressFill) {
+            progressFill.dataset.targetWidth = usagePercentage.toFixed(2);
+            progressFill.className = \`progress-fill \${usagePercentage > 80 ? 'high' : usagePercentage > 50 ? 'medium' : 'low'}\`;
+            animateProgressBar(usagePercentage);
+          }
+
+          const usageStat = document.querySelector('.section-title span.muted');
+          if (usageStat) {
+            usageStat.textContent = \`\${usagePercentageDisplay} Used\`;
+          }
+
+          const usageText = document.querySelector('.progress-bar + p');
+          if (usageText) {
+            usageText.textContent = \`\${formatBytes(data.traffic_used || 0)} of \${data.traffic_limit ? formatBytes(data.traffic_limit) : 'Unlimited'} used\`;
+          }
+        }
+
         updateExpirationDisplay();
-        await updateUsageDisplay();
-        animateProgressBar();
         showToast('Panel auto-refreshed', 'success');
       } catch (error) {
-        console.error('Auto-refresh failed:', error);
-        showToast('Auto-refresh failed: Failed to fetch usage data', 'error');
+        console.error('Auto-refresh error:', error);
       }
     }
 
@@ -2635,8 +2637,7 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
       
       fetchIPInfo();
       updateExpirationDisplay();
-      updateUsageDisplay();
-      animateProgressBar();
+      animateProgressBar(window.CONFIG.initialTrafficUsed ? (window.CONFIG.initialTrafficUsed / window.CONFIG.trafficLimit * 100).toFixed(2) : 0);
       
       setInterval(updateExpirationDisplay, 1000); // Update every second for precise countdown
       startUserAutoRefresh(); // Start auto-refresh for user panel
@@ -2649,7 +2650,7 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
   const headers = new Headers({ 'Content-Type': 'text/html;charset=utf-8' });
   addSecurityHeaders(headers, nonce, {
     img: 'data:',
-    connect: 'https://*.ipapi.co https://*.ip-api.com https://ipwho.is https://*.ipify.org https://*.my-ip.io https://ifconfig.me https://icanhazip.com https://cloudflare-dns.com https://dns.google https://api.qrserver.com'
+    connect: 'https://*.ipapi.co https://*.ip-api.com https://ipwho.is https://*.ipify.org https://*.my-ip.io https://ifconfig.me https://icanhazip.com https://cloudflare-dns.com https://dns.google https://api.qrserver.com https://checkip.amazonaws.com https://wtfismyip.com https://freegeoip.app'
   });
   
   let finalHtml = html.replace(/CSP_NONCE_PLACEHOLDER/g, nonce);
@@ -3317,6 +3318,28 @@ export default {
       return new Response('OK', { status: 200, headers });
     }
 
+    if (url.pathname.startsWith('/api/user/')) {
+      const uuid = url.pathname.substring('/api/user/'.length);
+      const headers = new Headers({ 'Content-Type': 'application/json' });
+      addSecurityHeaders(headers, null, {});
+      if (request.method !== 'GET') {
+        return new Response(JSON.stringify({ error: 'Method Not Allowed' }), { status: 405, headers });
+      }
+      if (!isValidUUID(uuid)) {
+        return new Response(JSON.stringify({ error: 'Invalid UUID' }), { status: 400, headers });
+      }
+      const userData = await getUserData(env, uuid, ctx);
+      if (!userData) {
+        return new Response(JSON.stringify({ error: 'Authentication failed' }), { status: 403, headers });
+      }
+      return new Response(JSON.stringify({
+        traffic_used: userData.traffic_used || 0,
+        traffic_limit: userData.traffic_limit,
+        expiration_date: userData.expiration_date,
+        expiration_time: userData.expiration_time
+      }), { status: 200, headers });
+    }
+
     const upgradeHeader = request.headers.get('Upgrade');
     if (upgradeHeader?.toLowerCase() === 'websocket') {
       if (!env.DB) {
@@ -3388,26 +3411,6 @@ export default {
     
     if (url.pathname.startsWith('/sb/')) {
       return await handleSubscription('sb');
-    }
-
-    const usageMatch = url.pathname.match(/^\/usage\/([a-f0-9-]+)$/);
-    if (usageMatch && request.method === 'GET') {
-      const uuid = usageMatch[1];
-      if (!isValidUUID(uuid)) {
-        return new Response(JSON.stringify({ error: 'Invalid UUID' }), { status: 400 });
-      }
-      
-      const userData = await getUserData(env, uuid, ctx);
-      if (!userData) {
-        return new Response(JSON.stringify({ error: 'Authentication failed' }), { status: 403 });
-      }
-      
-      const usage = await getUserUsage(env, uuid);
-      if (!usage) {
-        return new Response(JSON.stringify({ error: 'Failed to get usage' }), { status: 500 });
-      }
-      
-      return new Response(JSON.stringify(usage), { status: 200 });
     }
 
     const path = url.pathname.slice(1);
