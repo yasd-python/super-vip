@@ -33,7 +33,7 @@ const Config = {
 
     if (env.D1) {
       try {
-        const { results } = await env.D1.prepare("SELECT SELECT ip FROM proxy_scans WHERE is_current_best = 1 LIMIT 1").all();
+        const { results } = await env.D1.prepare("SELECT ip FROM proxy_scans WHERE is_current_best = 1 LIMIT 1").all();
         selectedProxyIP = results[0]?.ip || null;
         if (selectedProxyIP) {
           console.log(`Using proxy IP from D1: ${selectedProxyIP}`);
@@ -602,7 +602,7 @@ const adminPanelHTML = `<!DOCTYPE html>
         :root {
             --bg-main: #111827; --bg-card: #1F2937; --border: #374151; --text-primary: #F9FAFB;
             --text-secondary: #9CA3AF; --accent: #3B82F6; --accent-hover: #2563EB; --danger: #EF4444;
-            --danger-hover: #DC2626; --success: #22C55E; --expired: #F59E0B; --btn-secondary-bg: #4B5563;
+            --danger-hover: #DC2626; --success: #22C55E; --expired: #F59e0b; --btn-secondary-bg: #4B5563;
         }
         body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: var(--bg-main); color: var(--text-primary); font-size: 14px; }
         .container { max-width: 1200px; margin: 40px auto; padding: 0 20px; }
