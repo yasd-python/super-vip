@@ -6,15 +6,6 @@
 // QR Code generation with multiple fallbacks for 100% cross-browser compatibility
 // Works in Chrome, Firefox, Safari, Edge, and all mobile browsers
 //
-// Enhanced with Advanced RASPS (Real-time Adaptive Smart Polling System)
-// - ETag-based conditional requests for bandwidth efficiency
-// - Exponential backoff with jitter for robustness
-// - Visibility-aware polling (pauses when tab inactive)
-// - Comprehensive error recovery and offline detection
-// - Real-time metrics and toast notifications
-// - Advanced DNS resolution with multiple providers
-// - Enhanced security: Improved rate limiting, CSRF, and IP geolocation caching
-//
 // ============================================================================
 
 import { connect } from 'cloudflare:sockets';
@@ -100,22 +91,9 @@ const CONST = {
   ADMIN_LOGIN_FAIL_LIMIT: 5,
   ADMIN_LOGIN_LOCK_TTL: 600,
   SCAMALYTICS_THRESHOLD: 50,
-  USER_PATH_RATE_LIMIT: 10, // Reduced burst for security
+  USER_PATH_RATE_LIMIT: 20,
   USER_PATH_RATE_TTL: 60,
   AUTO_REFRESH_INTERVAL: 10000, // Optimized to 10 seconds for more precise countdown and real-time updates
-  // Advanced RASPS Constants
-  RASPS_POLL_MIN_MS: 35000,
-  RASPS_POLL_MAX_MS: 85000,
-  RASPS_INACTIVE_MULTIPLIER: 4,
-  RASPS_MAX_BACKOFF_MS: 300000, // 5 min
-  RASPS_INITIAL_BACKOFF_MS: 2000,
-  RASPS_JITTER_MS: 3000,
-  RASPS_OFFLINE_RETRY_MS: 10000,
-  RASPS_VISIBILITY_CHECK_INTERVAL: 5000,
-  RASPS_MAX_RETRIES: 3,
-  RASPS_TOAST_304_INTERVAL: 5,
-  RASPS_CIRCUIT_BREAKER_FAILURES: 5,
-  RASPS_CIRCUIT_BREAKER_TIMEOUT: 60000
 };
 
 // ============================================================================
@@ -199,14 +177,10 @@ function isValidUUID(uuid) {
 
 function isExpired(expDate, expTime) {
   if (!expDate || !expTime) return true;
-  let expTimeSeconds = expTime;
-  if (expTime.includes(':') && expTime.split(':').length === 2) {
-    expTimeSeconds += ':00'; // Fix: Add seconds if missing
-  }
+  const expTimeSeconds = expTime.includes(':') && expTime.split(':').length === 2 ? `${expTime}:00` : expTime;
   const cleanTime = expTimeSeconds.split('.')[0];
   const expDatetimeUTC = new Date(`${expDate}T${cleanTime}Z`);
-  if (isNaN(expDatetimeUTC.getTime())) return true; // Fix: Handle invalid date
-  return expDatetimeUTC <= new Date();
+  return expDatetimeUTC <= new Date() || isNaN(expDatetimeUTC.getTime());
 }
 
 function formatBytes(bytes) {
@@ -219,7 +193,6 @@ function formatBytes(bytes) {
 
 async function kvGet(db, key, type = 'text') {
   try {
-    if (!db) return null; // Fix: Handle missing DB
     const stmt = db.prepare("SELECT value, expiration FROM key_value WHERE key = ?").bind(key);
     const res = await stmt.first();
     
@@ -248,7 +221,6 @@ async function kvGet(db, key, type = 'text') {
 
 async function kvPut(db, key, value, options = {}) {
   try {
-    if (!db) return; // Fix: Handle missing DB
     if (typeof value === 'object') {
       value = JSON.stringify(value);
     }
@@ -267,7 +239,6 @@ async function kvPut(db, key, value, options = {}) {
 
 async function kvDelete(db, key) {
   try {
-    if (!db) return; // Fix: Handle missing DB
     await db.prepare("DELETE FROM key_value WHERE key = ?").bind(key).run();
   } catch (e) {
     console.error(`kvDelete error for ${key}: ${e}`);
@@ -322,6 +293,17 @@ async function updateUsage(env, uuid, bytes, ctx) {
     }
   } catch (err) {
     console.error(`Failed to update usage for ${uuid}:`, err);
+  }
+}
+
+async function getUserUsage(env, uuid) {
+  try {
+    const stmt = env.DB.prepare("SELECT traffic_used, traffic_limit FROM users WHERE uuid = ?").bind(uuid);
+    const res = await stmt.first();
+    return res ? { traffic_used: res.traffic_used || 0, traffic_limit: res.traffic_limit } : null;
+  } catch (e) {
+    console.error(`Failed to get usage for ${uuid}: ${e}`);
+    return null;
   }
 }
 
@@ -455,19 +437,6 @@ async function checkRateLimit(db, key, limit, ttl) {
   const count = parseInt(countStr, 10) || 0;
   if (count >= limit) return true;
   await kvPut(db, key, (count + 1).toString(), { expirationTtl: ttl });
-  return false;
-}
-
-// New: Token Bucket Rate Limiting
-async function tokenBucketRateLimit(db, key, rate, burst) {
-  const now = Math.floor(Date.now() / 1000);
-  const data = await kvGet(db, key, 'json') || { tokens: burst, lastRefill: now };
-  const elapsed = now - data.lastRefill;
-  data.tokens = Math.min(burst, data.tokens + elapsed * rate);
-  data.lastRefill = now;
-  if (data.tokens < 1) return true;
-  data.tokens -= 1;
-  await kvPut(db, key, data, { expirationTtl: 3600 });
   return false;
 }
 
@@ -832,7 +801,7 @@ const adminPanelHTML = `<!DOCTYPE html>
 
             function escapeHTML(str) {
               if (typeof str !== 'string') return '';
-              return str.replace(/[&<>\\"']/g, m => ({
+              return str.replace(/[&<>"']/g, m => ({
                 '&': '&amp;',
                 '<': '&lt;',
                 '>': '&gt;',
@@ -859,10 +828,10 @@ const adminPanelHTML = `<!DOCTYPE html>
             const getCsrfToken = () => document.cookie.split('; ').find(row => row.startsWith('csrf_token='))?.split('=')[1] || '';
 
             const api = {
-                get: (endpoint) => fetch(\`${API_BASE}\${endpoint}\`, { credentials: 'include' }).then(handleResponse),
-                post: (endpoint, body) => fetch(\`${API_BASE}\${endpoint}\`, { method: 'POST', credentials: 'include', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': getCsrfToken()}, body: JSON.stringify(body) }).then(handleResponse),
-                put: (endpoint, body) => fetch(\`${API_BASE}\${endpoint}\`, { method: 'PUT', credentials: 'include', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': getCsrfToken()}, body: JSON.stringify(body) }).then(handleResponse),
-                delete: (endpoint) => fetch(\`${API_BASE}\${endpoint}\`, { method: 'DELETE', credentials: 'include', headers: {'X-CSRF-Token': getCsrfToken()} }).then(handleResponse),
+                get: (endpoint) => fetch(\`\${API_BASE}\${endpoint}\`, { credentials: 'include' }).then(handleResponse),
+                post: (endpoint, body) => fetch(\`\${API_BASE}\${endpoint}\`, { method: 'POST', credentials: 'include', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': getCsrfToken()}, body: JSON.stringify(body) }).then(handleResponse),
+                put: (endpoint, body) => fetch(\`\${API_BASE}\${endpoint}\`, { method: 'PUT', credentials: 'include', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': getCsrfToken()}, body: JSON.stringify(body) }).then(handleResponse),
+                delete: (endpoint) => fetch(\`\${API_BASE}\${endpoint}\`, { method: 'DELETE', credentials: 'include', headers: {'X-CSRF-Token': getCsrfToken()} }).then(handleResponse),
             };
 
             async function handleResponse(response) {
@@ -884,7 +853,7 @@ const adminPanelHTML = `<!DOCTYPE html>
                 const localDateTime = new Date(\`\${dateStr}T\${timeStr}\`);
                 if (isNaN(localDateTime.getTime())) return { utcDate: '', utcTime: '' };
 
-                const year = localDateTime.getUTCFullYear();
+                const year =localDateTime.getUTCFullYear();
                 const month = pad(localDateTime.getUTCMonth() + 1);
                 const day = pad(localDateTime.getUTCDate());
                 const hours = pad(localDateTime.getUTCHours());
@@ -1108,7 +1077,7 @@ const adminPanelHTML = `<!DOCTYPE html>
                 const localTime = document.getElementById('expiryTime').value;
 
                 const { utcDate, utcTime } = localToUTC(localDate, localTime);
-                if (!utcDate || !utcTime) return showToast('Invalid date or time entered.', true);
+                if (!utcDate|| !utcTime) return showToast('Invalid date or time entered.', true);
 
                 const dataLimit = document.getElementById('dataLimit').value;
                 const dataUnit = document.getElementById('dataUnit').value;
@@ -1297,9 +1266,9 @@ const adminPanelHTML = `<!DOCTYPE html>
 </body>
 </html>`;
 
- // ============================================================================
- // ADMIN API HANDLERS
- // ============================================================================
+// ============================================================================
+// ADMIN API HANDLERS
+// ============================================================================
 
 async function isAdmin(request, env) {
   const cookieHeader = request.headers.get('Cookie');
@@ -1363,7 +1332,7 @@ async function handleAdminRequest(request, env, ctx, adminPrefix) {
   const adminSubPath = url.pathname.substring(adminBasePath.length) || '/';
 
   if (adminSubPath.startsWith('/api/')) {
-    if (!(await isAdmin(request, env)) ) {
+    if (!(await isAdmin(request, env))) {
       const headers = new Headers(jsonHeader);
       addSecurityHeaders(headers, null, {});
       return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers });
@@ -1569,8 +1538,9 @@ async function handleAdminRequest(request, env, ctx, adminPrefix) {
           }
           const token = crypto.randomUUID();
           const csrfToken = crypto.randomUUID();
+          const hashedToken = await hashSHA256(token);
           ctx.waitUntil(Promise.all([
-            kvPut(env.DB, 'admin_session_token_hash', await hashSHA256(token), { expirationTtl: 86400 }),
+            kvPut(env.DB, 'admin_session_token_hash', hashedToken, { expirationTtl: 86400 }),
             kvDelete(env.DB, rateLimitKey)
           ]));
           
@@ -1629,7 +1599,7 @@ async function handleAdminRequest(request, env, ctx, adminPrefix) {
 }
 
 // ============================================================================
-// USER PANEL - UNIVERSAL QR CODE WITH MULTIPLE FALLBACK METHODS (with advanced RASPS enhancements)
+// USER PANEL - UNIVERSAL QR CODE WITH MULTIPLE FALLBACK METHODS (with auto-refresh enhancements)
 // ============================================================================
 
 function handleUserPanel(userID, hostName, proxyAddress, userData) {
@@ -1660,8 +1630,6 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
   let usagePercentage = 0;
   if (userData.traffic_limit && userData.traffic_limit > 0) {
     usagePercentage = Math.min(((userData.traffic_used || 0) / userData.traffic_limit) * 100, 100);
-  } else {
-    usagePercentage = 0; // Fix: If limit 0 or null, percentage 0
   }
 
   let usagePercentageDisplay;
@@ -1984,7 +1952,9 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
       singleSingboxConfig: ${JSON.stringify(singleSingboxConfig)},
       expirationDateTime: ${expirationDateTime ? `"${expirationDateTime}"` : 'null'},
       isExpired: ${isUserExpired},
-      clientUrls: ${JSON.stringify(clientUrls)}
+      clientUrls: ${JSON.stringify(clientUrls)},
+      trafficUsed: ${userData.traffic_used || 0},
+      trafficLimit: ${userData.traffic_limit || null}
     };
 
     // =========================================
@@ -2242,7 +2212,7 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
     }
 
     // =========================================
-    // ADVANCED IP DETECTION - MULTIPLE FALLBACKS WITH CACHING
+    // ROBUST IP DETECTION - MULTIPLE FALLBACKS
     // =========================================
     async function fetchIPInfo() {
       const displayElement = (id, value, isFinal = false) => {
@@ -2255,7 +2225,7 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
         }
       };
 
-      async function fetchWithTimeout(url, timeout = 5000) {
+      async function fetchWithTimeout(url, timeout = 8000) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeout);
         
@@ -2523,289 +2493,79 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
       }, 100);
     }
 
-    // =========================================
-    // ADVANCED RASPS - Real-time Adaptive Smart Polling System
-    // Enhanced with offline detection, exponential backoff with jitter, visibility awareness,
-    // ETag optimization, and comprehensive error recovery
-    // =========================================
-    function startRASPSPolling() {
-      const ENDPOINT = \`/api/user/\${window.CONFIG.uuid}\`;
-      const POLL_MIN_MS = ${CONST.RASPS_POLL_MIN_MS};
-      const POLL_MAX_MS = ${CONST.RASPS_POLL_MAX_MS};
-      const INACTIVE_MULTIPLIER = ${CONST.RASPS_INACTIVE_MULTIPLIER};
-      const MAX_BACKOFF_MS = ${CONST.RASPS_MAX_BACKOFF_MS};
-      const INITIAL_BACKOFF_MS = ${CONST.RASPS_INITIAL_BACKOFF_MS};
-      const JITTER_MS = ${CONST.RASPS_JITTER_MS};
-      const OFFLINE_RETRY_MS = ${CONST.RASPS_OFFLINE_RETRY_MS};
-      const VISIBILITY_CHECK_INTERVAL = ${CONST.RASPS_VISIBILITY_CHECK_INTERVAL};
-      const USE_ETAG = true;
-      const MAX_RETRIES = ${CONST.RASPS_MAX_RETRIES}; // New: Advanced retry
-      const TOAST_304_INTERVAL = ${CONST.RASPS_TOAST_304_INTERVAL}; // New: Toast for 304 every N polls
-      const CIRCUIT_BREAKER_FAILURES = ${CONST.RASPS_CIRCUIT_BREAKER_FAILURES};
-      const CIRCUIT_BREAKER_TIMEOUT = ${CONST.RASPS_CIRCUIT_BREAKER_TIMEOUT};
-
-      const SELECTORS = {
-        usageDisplay: '#usage-display',
-        progressFill: '#progress-bar-fill',
-        progressText: '.muted.text-center.mb-2',
-        statusBadge: '#status-badge',
-        expiryCountdown: '#expiry-countdown'
-      };
-
-      let lastDataHash = null;
-      let etag = null;
-      let backoffMs = INITIAL_BACKOFF_MS;
-      let isOnline = navigator.onLine;
-      let visibilityCheckInterval = null;
-      let pollInterval = null;
-      let poll304Count = 0; // New: Count for 304 toasts
-      let retryCount = 0; // New: Retry counter
-      let abortController = null; // New: For canceling previous requests
-      let circuitOpen = false;
-      let circuitTimeout = null;
-
-      const wait = ms => new Promise(res => setTimeout(res, ms));
-      const randomBetween = (min, max) => Math.floor(min + Math.random() * (max - min + 1));
-
-      function makeHash(obj) {
-        try {
-          const payload = {
-            traffic_used: obj.traffic_used ?? null,
-            traffic_limit: obj.traffic_limit ?? null,
-            expiration_date: obj.expiration_date ?? null,
-            expiration_time: obj.expiration_time ?? null,
-            isExpired: obj.isExpired ?? null
-          };
-          return JSON.stringify(payload);
-        } catch (e) {
-          return JSON.stringify(obj);
+    async function updateUsageDisplay() {
+      try {
+        const response = await fetch('/usage/${window.CONFIG.uuid}', {
+          method: 'GET',
+          headers: { 'Accept': 'application/json' }
+        });
+        
+        if (!response.ok) {
+          throw new Error('Failed to fetch usage data');
         }
-      }
-
-      function safeQuery(selector) {
-        return document.querySelector(selector);
-      }
-
-      function updateDOMWithData(obj) {
-        try {
-          const used = obj.traffic_used ?? 0;
-          const limit = obj.traffic_limit ?? 0;
-          const isExpired = obj.isExpired ?? window.CONFIG.isExpired;
-
-          // Update Data Used
-          const usageDisplay = safeQuery(SELECTORS.usageDisplay);
-          if (usageDisplay) {
-            usageDisplay.textContent = formatBytes(used);
-          }
-
-          // Update Progress Bar if limit exists
-          if (limit > 0) {
-            let usagePercentage = Math.min((used / limit) * 100, 100);
-            const progressFill = safeQuery(SELECTORS.progressFill);
-            if (progressFill) {
-              progressFill.style.width = \`\${usagePercentage.toFixed(2)}%\`;
-              progressFill.className = 'progress-fill ' + (usagePercentage > 80 ? 'high' : usagePercentage > 50 ? 'medium' : 'low');
-              progressFill.dataset.targetWidth = usagePercentage.toFixed(2);
-              animateProgressBar(); // New: Re-animate on update
-            }
-
-            const progressText = safeQuery(SELECTORS.progressText);
-            if (progressText) {
-              progressText.textContent = \`\${formatBytes(used)} of \${formatBytes(limit)} used\`;
-            }
-          }
-
-          // Update Status
-          const statusBadge = safeQuery(SELECTORS.statusBadge);
-          if (statusBadge) {
-            statusBadge.textContent = isExpired ? 'Expired' : 'Active';
-            statusBadge.parentElement.className = 'stat ' + (isExpired ? 'status-expired' : 'status-active');
-          }
-
-          // Update Expiration Countdown
-          if (obj.expiration_date && obj.expiration_time) {
-            window.CONFIG.expirationDateTime = \`\${obj.expiration_date}T\${obj.expiration_time}Z\`;
-            window.CONFIG.isExpired = isExpired;
-            updateExpirationDisplay();
-          }
-
-          console.debug('RASPS: DOM updated with new data');
-        } catch (err) {
-          console.error('RASPS: DOM update error', err);
-          showToast('Failed to update usage data', 'error');
+        
+        const data = await response.json();
+        if (!data || typeof data.traffic_used === 'undefined') {
+          throw new Error('Invalid usage data received');
         }
-      }
-
-      function buildHeaders() {
-        const headers = {
-          'Accept': 'application/json',
-          'Cache-Control': 'no-cache, no-store, must-revalidate', // New: Stronger cache prevention
-          'Pragma': 'no-cache',
-          'Expires': '0'
-        };
-        if (USE_ETAG && etag) headers['If-None-Match'] = etag;
-        return headers;
-      }
-
-      async function pollingLoop() {
-        while (true) {
-          if (circuitOpen) {
-            await wait(CIRCUIT_BREAKER_TIMEOUT);
-            circuitOpen = false;
-            retryCount = 0;
-          }
-
-          try {
-            if (!isOnline) {
-              console.debug('RASPS: Offline - waiting for reconnection');
-              await wait(OFFLINE_RETRY_MS);
-              continue;
-            }
-
-            const visibilityMultiplier = (document.visibilityState === 'visible') ? 1 : INACTIVE_MULTIPLIER;
-
-            if (abortController) abortController.abort(); // Cancel previous request
-            abortController = new AbortController();
-
-            const res = await fetch(ENDPOINT, {
-              method: 'GET',
-              credentials: 'same-origin',
-              headers: buildHeaders(),
-              cache: 'no-store',
-              signal: abortController.signal // New: Abort support for race prevention
-            }).catch(err => {
-              if (err.name === 'AbortError') {
-                console.debug('RASPS: Previous fetch aborted');
-                return null;
-              }
-              throw err;
-            });
-
-            if (!res) continue; // Aborted, skip
-
-            if (res.headers) {
-              const hEtag = res.headers.get('ETag');
-              if (hEtag) etag = hEtag;
-            }
-
-            if (res.status === 304) {
-              console.debug('RASPS: 304 Not Modified - no update needed');
-              poll304Count++;
-              if (poll304Count % TOAST_304_INTERVAL === 0) {
-                showToast('Data is up to date - no changes', 'success'); // New: Positive toast for 304
-              }
-              backoffMs = INITIAL_BACKOFF_MS; // Reset backoff
-              retryCount = 0; // Reset retry
-              circuitOpen = false;
-            } else if (res.ok) {
-              const data = await res.json();
-              const hash = makeHash(data);
-
-              if (hash !== lastDataHash) {
-                lastDataHash = hash;
-                updateDOMWithData(data);
-                showToast('Usage data updated', 'success');
-              } else {
-                console.debug('RASPS: No meaningful change detected - skipping DOM update');
-              }
-
-              backoffMs = INITIAL_BACKOFF_MS;
-              retryCount = 0;
-              circuitOpen = false;
-            } else {
-              console.warn('RASPS: Server error', res.status);
-              throw new Error('Server responded with ' + res.status);
-            }
-          } catch (err) {
-            console.error('RASPS: Fetch error', err);
-            retryCount++;
-            if (retryCount >= CIRCUIT_BREAKER_FAILURES) {
-              circuitOpen = true;
-              showToast('Auto-refresh circuit open - pausing for 1min', 'error');
-              console.error('RASPS: Circuit breaker opened');
-              await wait(CIRCUIT_BREAKER_TIMEOUT);
-            } else if (retryCount >= MAX_RETRIES) {
-              showToast('Auto-refresh failed after retries. Please refresh manually.', 'error');
-              console.error('RASPS: Max retries reached - stopping polling');
-              return; // Stop polling after max retries
-            } else {
-              showToast('Auto-refresh failed: ' + (err && err.message ? err.message : String(err)) + '. Retrying (' + retryCount + '/' + MAX_RETRIES + ')', 'error');
-            }
-            const jitter = Math.random() * 1000;
-            await wait(Math.min(MAX_BACKOFF_MS, backoffMs + jitter));
-            backoffMs = Math.min(MAX_BACKOFF_MS, backoffMs * 1.8);
-            continue;
-          }
-
-          const baseDelay = randomBetween(POLL_MIN_MS, POLL_MAX_MS);
-          const delay = Math.min(MAX_BACKOFF_MS, Math.floor(baseDelay * visibilityMultiplier));
-          const jitter = Math.floor(Math.random() * JITTER_MS);
-          await wait(delay + jitter);
+        
+        window.CONFIG.trafficUsed = data.traffic_used;
+        window.CONFIG.trafficLimit = data.traffic_limit;
+        
+        const usageDisplay = document.getElementById('usage-display');
+        if (usageDisplay) {
+          usageDisplay.textContent = formatBytes(window.CONFIG.trafficUsed);
         }
-      }
-
-      function handleOnline() {
-        isOnline = true;
-        console.debug('RASPS: Online - resuming polling with jitter');
-        const jitter = Math.floor(Math.random() * 2000); // New: Online jitter to prevent thundering herd
-        setTimeout(() => {
-          if (!pollInterval) {
-            pollInterval = setInterval(() => {}, 1); // Placeholder to keep alive
-          }
-        }, jitter);
-      }
-
-      function handleOffline() {
-        isOnline = false;
-        console.debug('RASPS: Offline - pausing polling');
-      }
-
-      function handleVisibilityChange() {
-        if (document.visibilityState === 'visible') {
-          console.debug('RASPS: Tab visible - resuming normal polling');
-        } else {
-          console.debug('RASPS: Tab hidden - reducing polling frequency');
+        
+        let usagePercentage = 0;
+        if (window.CONFIG.trafficLimit && window.CONFIG.trafficLimit > 0) {
+          usagePercentage = Math.min((window.CONFIG.trafficUsed / window.CONFIG.trafficLimit) * 100, 100);
         }
+        
+        let usagePercentageDisplay = usagePercentage.toFixed(2) + '%';
+        if (usagePercentage > 0 && usagePercentage < 0.01) {
+          usagePercentageDisplay = '< 0.01%';
+        } else if (usagePercentage === 0) {
+          usagePercentageDisplay = '0%';
+        } else if (usagePercentage === 100) {
+          usagePercentageDisplay = '100%';
+        }
+        
+        const progressFill = document.getElementById('progress-bar-fill');
+        if (progressFill) {
+          progressFill.dataset.targetWidth = usagePercentage.toFixed(2);
+          progressFill.className = \`progress-fill \${usagePercentage > 80 ? 'high' : usagePercentage > 50 ? 'medium' : 'low'}\`;
+          animateProgressBar();
+        }
+        
+        const usageText = document.querySelector('.progress-bar + p');
+        if (usageText) {
+          usageText.textContent = \`\${formatBytes(window.CONFIG.trafficUsed)} of \${window.CONFIG.trafficLimit ? formatBytes(window.CONFIG.trafficLimit) : 'Unlimited'} used\`;
+        }
+        
+        const usageStatsTitle = document.querySelector('.section-title span.muted');
+        if (usageStatsTitle) {
+          usageStatsTitle.textContent = \`\${usagePercentageDisplay} Used\`;
+        }
+        
+        return true;
+      } catch (error) {
+        console.error('Failed to update usage data:', error);
+        showToast('Failed to update usage data', 'error');
+        return false;
       }
-
-      // Network status listeners
-      window.addEventListener('online', handleOnline);
-      window.addEventListener('offline', handleOffline);
-      document.addEventListener('visibilitychange', handleVisibilityChange);
-
-      // Periodic visibility check for older browsers
-      visibilityCheckInterval = setInterval(handleVisibilityChange, VISIBILITY_CHECK_INTERVAL);
-
-      (function startPolling() {
-        console.info('RASPS: Starting advanced smart polling for usage data at', ENDPOINT);
-        const startupJitter = Math.floor(Math.random() * 2000);
-        setTimeout(() => {
-          pollingLoop().catch(e => {
-            console.error('RASPS: Fatal polling loop error', e);
-            showToast('Auto-refresh failed: Failed to fetch usage data', 'error');
-          });
-        }, startupJitter);
-      })();
-
-      // Cleanup on page unload
-      window.addEventListener('beforeunload', () => {
-        if (pollInterval) clearInterval(pollInterval);
-        if (visibilityCheckInterval) clearInterval(visibilityCheckInterval);
-        window.removeEventListener('online', handleOnline);
-        window.removeEventListener('offline', handleOffline);
-        document.removeEventListener('visibilitychange', handleVisibilityChange);
-        if (abortController) abortController.abort();
-      });
     }
 
     async function refreshUserPanel() {
       try {
         await fetchIPInfo();
         updateExpirationDisplay();
+        await updateUsageDisplay();
         animateProgressBar();
-        showToast('Panel auto-refreshed', false);
+        showToast('Panel auto-refreshed', 'success');
       } catch (error) {
-        showToast('Auto-refresh failed: ' + error.message, 'error');
+        console.error('Auto-refresh failed:', error);
+        showToast('Auto-refresh failed: Failed to fetch usage data', 'error');
       }
     }
 
@@ -2875,11 +2635,11 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
       
       fetchIPInfo();
       updateExpirationDisplay();
+      updateUsageDisplay();
       animateProgressBar();
       
       setInterval(updateExpirationDisplay, 1000); // Update every second for precise countdown
-      startRASPSPolling(); // Start advanced RASPS for usage auto-refresh
-      startUserAutoRefresh(); // Start general auto-refresh
+      startUserAutoRefresh(); // Start auto-refresh for user panel
     });
   </script>
 </body>
@@ -3235,8 +2995,6 @@ function MakeReadableWebSocketStream(webSocketServer, earlyDataHeader, log) {
 
 async function RemoteSocketToWS(remoteSocket, webSocket, protocolResponseHeader, retry, log, trafficCallback) {
   let hasIncomingData = false;
-  let retryCount = 0;
-  const MAX_RETRY = 5; // Increased for better reliability
   try {
     await remoteSocket.readable.pipeTo(
       new WritableStream({
@@ -3267,9 +3025,8 @@ async function RemoteSocketToWS(remoteSocket, webSocket, protocolResponseHeader,
     console.error('RemoteSocketToWS error:', error.stack || error);
     safeCloseWebSocket(webSocket);
   }
-  if (!hasIncomingData && retry && retryCount < MAX_RETRY) {
+  if (!hasIncomingData && retry) {
     log('No incoming data, retrying');
-    retryCount++;
     try {
         await retry();
     } catch(e) {
@@ -3589,7 +3346,7 @@ export default {
 
     const handleSubscription = async (core) => {
       const rateLimitKey = `user_path_rate:${clientIp}`;
-      if (await tokenBucketRateLimit(env.DB, rateLimitKey, 1, CONST.USER_PATH_RATE_LIMIT)) { // Token bucket for 1 token/sec, burst 20
+      if (await checkRateLimit(env.DB, rateLimitKey, CONST.USER_PATH_RATE_LIMIT, CONST.USER_PATH_RATE_TTL)) {
         const headers = new Headers();
         addSecurityHeaders(headers, null, {});
         return new Response('Rate limit exceeded', { status: 429, headers });
@@ -3633,62 +3390,30 @@ export default {
       return await handleSubscription('sb');
     }
 
-    // New User API Endpoint
-    const userApiMatch = url.pathname.match(/^\/api\/user\/([a-f0-9-]+)$/);
-    if (userApiMatch && request.method === 'GET') {
-      const rateLimitKey = `user_api_rate:${clientIp}`;
-      if (await tokenBucketRateLimit(env.DB, rateLimitKey, 1, CONST.USER_PATH_RATE_LIMIT)) {
-        const headers = new Headers({ 'Content-Type': 'application/json' });
-        addSecurityHeaders(headers, null, {});
-        return new Response(JSON.stringify({ error: 'Rate limit exceeded' }), { status: 429, headers });
-      }
-
-      const uuid = userApiMatch[1];
+    const usageMatch = url.pathname.match(/^\/usage\/([a-f0-9-]+)$/);
+    if (usageMatch && request.method === 'GET') {
+      const uuid = usageMatch[1];
       if (!isValidUUID(uuid)) {
-        const headers = new Headers({ 'Content-Type': 'application/json' });
-        addSecurityHeaders(headers, null, {});
-        return new Response(JSON.stringify({ error: 'Invalid UUID' }), { status: 400, headers });
+        return new Response(JSON.stringify({ error: 'Invalid UUID' }), { status: 400 });
       }
-
+      
       const userData = await getUserData(env, uuid, ctx);
       if (!userData) {
-        const headers = new Headers({ 'Content-Type': 'application/json' });
-        addSecurityHeaders(headers, null, {});
-        return new Response(JSON.stringify({ error: 'User not found' }), { status: 404, headers });
+        return new Response(JSON.stringify({ error: 'Authentication failed' }), { status: 403 });
       }
-
-      // Compute ETag as hash of relevant data
-      const dataHash = await hashSHA256(JSON.stringify({
-        traffic_used: userData.traffic_used,
-        traffic_limit: userData.traffic_limit,
-        expiration_date: userData.expiration_date,
-        expiration_time: userData.expiration_time
-      }));
-
-      const headers = new Headers({ 'Content-Type': 'application/json' });
-      headers.set('ETag', dataHash);
-
-      // Check conditional headers
-      const ifNoneMatch = request.headers.get('If-None-Match');
-      if (ifNoneMatch && ifNoneMatch === dataHash) {
-        addSecurityHeaders(headers, null, {});
-        return new Response(null, { status: 304, headers });
+      
+      const usage = await getUserUsage(env, uuid);
+      if (!usage) {
+        return new Response(JSON.stringify({ error: 'Failed to get usage' }), { status: 500 });
       }
-
-      addSecurityHeaders(headers, null, {});
-      return new Response(JSON.stringify({
-        traffic_used: userData.traffic_used,
-        traffic_limit: userData.traffic_limit,
-        expiration_date: userData.expiration_date,
-        expiration_time: userData.expiration_time,
-        isExpired: isExpired(userData.expiration_date, userData.expiration_time)
-      }), { status: 200, headers });
+      
+      return new Response(JSON.stringify(usage), { status: 200 });
     }
 
     const path = url.pathname.slice(1);
     if (isValidUUID(path)) {
       const rateLimitKey = `user_path_rate:${clientIp}`;
-      if (await tokenBucketRateLimit(env.DB, rateLimitKey, 1, CONST.USER_PATH_RATE_LIMIT)) {
+      if (await checkRateLimit(env.DB, rateLimitKey, CONST.USER_PATH_RATE_LIMIT, CONST.USER_PATH_RATE_TTL)) {
         const headers = new Headers();
         addSecurityHeaders(headers, null, {});
         return new Response('Rate limit exceeded', { status: 429, headers });
@@ -3741,7 +3466,23 @@ export default {
         mutableHeaders.delete('content-security-policy-report-only');
         mutableHeaders.delete('x-frame-options');
         
-        addSecurityHeaders(mutableHeaders, null, {});
+        if (!mutableHeaders.has('Content-Security-Policy')) {
+          mutableHeaders.set('Content-Security-Policy', "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: *; frame-ancestors 'self';");
+        }
+        if (!mutableHeaders.has('X-Frame-Options')) {
+          mutableHeaders.set('X-Frame-Options', 'SAMEORIGIN');
+        }
+        if (!mutableHeaders.has('Strict-Transport-Security')) {
+          mutableHeaders.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+        }
+        if (!mutableHeaders.has('X-Content-Type-Options')) {
+          mutableHeaders.set('X-Content-Type-Options', 'nosniff');
+        }
+        if (!mutableHeaders.has('Referrer-Policy')) {
+          mutableHeaders.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+        }
+        
+        mutableHeaders.set('alt-svc', 'h3=":443"; ma=0');
         
         return new Response(response.body, {
           status: response.status,
@@ -3760,4 +3501,4 @@ export default {
     addSecurityHeaders(headers, null, {});
     return new Response('Not found', { status: 404, headers });
   },
-};
+}
