@@ -758,10 +758,10 @@ const adminPanelHTML = `<!DOCTYPE html>
                 <div class="form-group" style="margin-top: 16px;"><label for="editNotes">Notes</label><input type="text" id="editNotes" name="notes" placeholder="Optional notes"></div>
                 <div class="form-group" style="margin-top: 16px;"><label for="editDataLimit">Data Limit</label><div class="input-group"><input type="number" id="editDataLimit" min="0" step="0.01"><select id="editDataUnit"><option>KB</option><option>MB</option><option>GB</option><option>TB</option><option value="unlimited">Unlimited</option></select></div></div>
                 <div class="form-group" style="margin-top: 16px;"><label><input type="checkbox" id="resetTraffic" name="reset_traffic" class="checkbox" style="width: auto; margin-right: 8px;"> Reset Traffic Usage</label></div>
-                <div class="modal-footer">
-                    <button type="button" id="modalCancelBtn" class="btn btn-secondary">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Save Changes</button>
-                </div>
+            <div class="modal-footer">
+              <button type="button" id="modalCancelBtn" class="btn btn-secondary">Cancel</button>
+              <button type="submit" class="btn btn-primary">Save Changes</button>
+            </div>
             </form>
         </div>
     </div>
@@ -1512,7 +1512,7 @@ async function handleAdminRequest(request, env, ctx, adminPrefix) {
         if (timingSafeEqual(formData.get('password'), env.ADMIN_KEY)) {
           if (env.ADMIN_TOTP_SECRET) {
             const totpCode = formData.get('totp');
-            if (!(await validateTOTP(env.ADMIN_TOTP_SECRET, totpCode)) {
+            if (!(await validateTOTP(env.ADMIN_TOTP_SECRET, totpCode))) {
               const nonce = generateNonce();
               addSecurityHeaders(htmlHeaders, nonce, {});
               let html = adminLoginHTML.replace('</form>', `</form><p class="error">Invalid TOTP code. Attempt ${failCount + 1} of ${CONST.ADMIN_LOGIN_FAIL_LIMIT}.</p>`);
@@ -2011,10 +2011,10 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
 
             if (usageEl && data.traffic_used && data.traffic_limit) {
                 const percentage = ((data.traffic_used / data.traffic_limit) * 100).toFixed(1);
-                usageEl.textContent = `${data.traffic_used} MB of ${data.traffic_limit} MB used (${percentage}%)`;
+                usageEl.textContent = data.traffic_used + ' MB of ' + data.traffic_limit + ' MB used (' + percentage + '%)';
             }
             if (timeEl && data.expiration_date && data.expiration_time) {
-                timeEl.textContent = `${data.expiration_date} ${data.expiration_time}`;
+                timeEl.textContent = data.expiration_date + ' ' + data.expiration_time;
             }
             if (statusEl && data.status) {
                 statusEl.textContent = data.status;
@@ -2068,7 +2068,7 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
                 }
 
                 if (!response.ok) {
-                    throw new Error(`HTTP error: ${response.status}`);
+                    throw new Error('HTTP error: ' + (response.status || response.statusText || 'unknown'));
                 }
 
                 lastEtag = response.headers.get('ETag');
@@ -2105,7 +2105,7 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
         function scheduleNextPoll() {
             if (pollTimeout) clearTimeout(pollTimeout);
             const delay = getRandomDelay();
-            console.debug(`Next poll in ${Math.round(delay / 1000)} seconds`);
+            console.debug('Next poll in ' + Math.round(delay / 1000) + ' seconds');
             pollTimeout = setTimeout(poll, delay);
         }
 
@@ -2123,7 +2123,7 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
                 console.error('Polling failed:', error);
                 const jitter = Math.random() * (currentBackoff / 2);
                 currentBackoff = Math.min(currentBackoff * CONFIG.BACKOFF_FACTOR + jitter, CONFIG.MAX_BACKOFF_MS);
-                console.warn(`Retrying after ${Math.round(currentBackoff / 1000)} seconds`);
+                console.warn('Retrying after ' + Math.round(currentBackoff / 1000) + ' seconds');
             } finally {
                 scheduleNextPoll();
             }
@@ -2399,16 +2399,11 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
           }
         } catch (error) {
           console.error('QR generation error:', error);
-          qrDisplay.innerHTML = `
-            <div style="text-align:center;padding:20px;">
-              <p class="muted" style="color:var(--danger);margin-bottom:16px">⚠️ Automatic QR generation failed.</p>
-              <p class="muted" style="font-size:13px;margin-bottom:12px">Copy the link manually and use an online QR generator:</p>
-              <a href="https://www.qr-code-generator.com/" target="_blank" rel="noopener noreferrer" 
-                 class="btn ghost small" style="display:inline-flex">
-                Open QR Generator
-              </a>
-            </div>
-          `;
+          qrDisplay.innerHTML = '<div style="text-align:center;padding:20px;">' +
+            '<p class="muted" style="color:var(--danger);margin-bottom:16px">⚠️ Automatic QR generation failed.</p>' +
+            '<p class="muted" style="font-size:13px;margin-bottom:12px">Copy the link manually and use an online QR generator:</p>' +
+            '<a href="https://www.qr-code-generator.com/" target="_blank" rel="noopener noreferrer" class="btn ghost small" style="display:inline-flex">Open QR Generator</a>' +
+          '</div>';
           showToast('QR generation failed - please copy link manually', 'error');
           return false;
         }
