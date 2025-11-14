@@ -2,11 +2,6 @@
 // ============================================================================
 // ULTIMATE VLESS PROXY WORKER - UNIVERSAL QR CODE VERSION
 // ============================================================================
-//
-// QR Code generation with multiple fallbacks for 100% cross-browser compatibility
-// Works in Chrome, Firefox, Safari, Edge, and all mobile browsers
-//
-// ============================================================================
 
 import { connect } from 'cloudflare:sockets';
 
@@ -31,15 +26,15 @@ const Config = {
   async fromEnv(env) {
     let selectedProxyIP = null;
 
-    if (env.D1) {
+    if (env.DB) {
       try {
-        const { results } = await env.D1.prepare("SELECT ip FROM proxy_scans WHERE is_current_best = 1 LIMIT 1").all();
+        const { results } = await env.DB.prepare("SELECT ip FROM proxy_scans WHERE is_current_best = 1 LIMIT 1").all();
         selectedProxyIP = results[0]?.ip || null;
         if (selectedProxyIP) {
-          console.log(`Using proxy IP from D1: ${selectedProxyIP}`);
+          console.log(`Using proxy IP from DB: ${selectedProxyIP}`);
         }
       } catch (e) {
-        console.error(`Failed to read from D1: ${e.message}`);
+        console.error(`Failed to read from DB: ${e.message}`);
       }
     }
 
@@ -802,7 +797,7 @@ const adminPanelHTML = `<!DOCTYPE html>
             function formatBytes(bytes) {
               if (bytes === 0) return '0 Bytes';
               const k = 1024;
-              const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+              const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
               const i = Math.floor(Math.log(bytes) / Math.log(k));
               return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
             }
@@ -1057,7 +1052,7 @@ const adminPanelHTML = `<!DOCTYPE html>
                 } catch (error) {
                   showToast('Auto-refresh failed: ' + error.message, true);
                 }
-              }, ${CONST.AUTO_REFRESH_INTERVAL});
+              }, 10000);
             }
 
             async function handleCreateUser(e) {
@@ -1066,7 +1061,7 @@ const adminPanelHTML = `<!DOCTYPE html>
                 const localTime = document.getElementById('expiryTime').value;
 
                 const { utcDate, utcTime } = localToUTC(localDate, localTime);
-                if (!utcDate|| !utcTime) return showToast('Invalid date or time entered.', true);
+                if (!utcDate || !utcTime) return showToast('Invalid date or time entered.', true);
 
                 const dataLimit = document.getElementById('dataLimit').value;
                 const dataUnit = document.getElementById('dataUnit').value;
@@ -1254,6 +1249,7 @@ const adminPanelHTML = `<!DOCTYPE html>
     </script>
 </body>
 </html>`;
+
 
 // ============================================================================
 // ADMIN API HANDLERS
@@ -1516,7 +1512,7 @@ async function handleAdminRequest(request, env, ctx, adminPrefix) {
         if (timingSafeEqual(formData.get('password'), env.ADMIN_KEY)) {
           if (env.ADMIN_TOTP_SECRET) {
             const totpCode = formData.get('totp');
-            if (!(await validateTOTP(env.ADMIN_TOTP_SECRET, totpCode))) {
+            if (!(await validateTOTP(env.ADMIN_TOTP_SECRET, totpCode)) {
               const nonce = generateNonce();
               addSecurityHeaders(htmlHeaders, nonce, {});
               let html = adminLoginHTML.replace('</form>', `</form><p class="error">Invalid TOTP code. Attempt ${failCount + 1} of ${CONST.ADMIN_LOGIN_FAIL_LIMIT}.</p>`);
@@ -1931,6 +1927,288 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
   <script src="https://unpkg.com/qrcode@1.5.3/build/qrcode.min.js" nonce="CSP_NONCE_PLACEHOLDER"></script>
 
   <script nonce="CSP_NONCE_PLACEHOLDER">
+    (function() {
+        'use strict';
+
+        const CONFIG = {
+            ENDPOINT: '/api/user/' + window.CONFIG.uuid,
+            POLL_MIN_MS: 35000,
+            POLL_MAX_MS: 85000,
+            INACTIVE_MULTIPLIER: 4,
+            MAX_BACKOFF_MS: 300000,
+            INITIAL_BACKOFF_MS: 2000,
+            BACKOFF_FACTOR: 1.8,
+            USE_ETAG: true,
+            FIELDS_TO_TRACK: ['traffic_used', 'traffic_limit', 'expiration_date', 'expiration_time', 'status'],
+            DOM_SELECTORS: {
+                usage: '#usage-display',
+                status: '#status-badge',
+                time: '#expiry-countdown'
+            },
+            LOCALSTORAGE_KEY: 'last_polled_data',
+            CHANGE_THRESHOLD: 0.05, // 5% change to adjust rate
+            IDLE_TIMEOUT_MS: 300000, // 5 minutes idle to slow down
+            WEBSOCKET_FALLBACK: false // Set to true if WebSocket endpoint available
+        };
+
+        let lastEtag = null;
+        let lastModified = null;
+        let lastDataHash = null;
+        let currentBackoff = CONFIG.INITIAL_BACKOFF_MS;
+        let isPolling = false;
+        let pollTimeout = null;
+        let isPageVisible = document.visibilityState === 'visible';
+        let lastSuccessfulFetch = Date.now();
+        let changeFrequency = 0;
+        let lastChangeTime = Date.now();
+        let idleTimer = null;
+
+        function getRandomDelay() {
+            const baseMin = CONFIG.POLL_MIN_MS;
+            const baseMax = CONFIG.POLL_MAX_MS;
+            const multiplier = isPageVisible ? 1 : CONFIG.INACTIVE_MULTIPLIER;
+            const minDelay = baseMin * multiplier;
+            const maxDelay = baseMax * multiplier;
+            return Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
+        }
+
+        function computeHash(data) {
+            const str = JSON.stringify(data);
+            let hash = 0;
+            for (let i = 0; i < str.length; i++) {
+                const char = str.charCodeAt(i);
+                hash = ((hash << 5) - hash) + char;
+                hash = hash & hash;
+            }
+            return hash.toString(36);
+        }
+
+        function extractDataFromJson(json) {
+            return {
+                traffic_used: json.traffic_used,
+                traffic_limit: json.traffic_limit,
+                expiration_date: json.expiration_date,
+                expiration_time: json.expiration_time,
+                status: json.status
+            };
+        }
+
+        function extractDataFromHtml(html) {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            return {
+                traffic_used: doc.querySelector(CONFIG.DOM_SELECTORS.usage)?.textContent.trim() || null,
+                expiration_date: doc.querySelector(CONFIG.DOM_SELECTORS.time)?.textContent.trim() || null,
+                expiration_time: doc.querySelector(CONFIG.DOM_SELECTORS.time)?.textContent.trim() || null,
+                status: doc.querySelector(CONFIG.DOM_SELECTORS.status)?.textContent.trim() || null
+            };
+        }
+
+        function updateDOM(data) {
+            const usageEl = document.querySelector(CONFIG.DOM_SELECTORS.usage);
+            const timeEl = document.querySelector(CONFIG.DOM_SELECTORS.time);
+            const statusEl = document.querySelector(CONFIG.DOM_SELECTORS.status);
+
+            if (usageEl && data.traffic_used && data.traffic_limit) {
+                const percentage = ((data.traffic_used / data.traffic_limit) * 100).toFixed(1);
+                usageEl.textContent = `${data.traffic_used} MB of ${data.traffic_limit} MB used (${percentage}%)`;
+            }
+            if (timeEl && data.expiration_date && data.expiration_time) {
+                timeEl.textContent = `${data.expiration_date} ${data.expiration_time}`;
+            }
+            if (statusEl && data.status) {
+                statusEl.textContent = data.status;
+            }
+        }
+
+        function loadCachedData() {
+            try {
+                const cached = localStorage.getItem(CONFIG.LOCALSTORAGE_KEY);
+                if (cached) {
+                    const data = JSON.parse(cached);
+                    updateDOM(data);
+                    showToast('Loaded cached data', false);
+                    return data;
+                }
+            } catch (e) {
+                console.warn('Failed to load cached data:', e);
+            }
+            return null;
+        }
+
+        function saveCachedData(data) {
+            try {
+                localStorage.setItem(CONFIG.LOCALSTORAGE_KEY, JSON.stringify(data));
+            } catch (e) {
+                console.warn('Failed to save cached data:', e);
+            }
+        }
+
+        async function fetchData() {
+            const headers = new Headers({
+                'Cache-Control': 'no-cache'
+            });
+            if (CONFIG.USE_ETAG && lastEtag) {
+                headers.set('If-None-Match', lastEtag);
+            }
+            if (lastModified) {
+                headers.set('If-Modified-Since', lastModified);
+            }
+
+            try {
+                const response = await fetch(CONFIG.ENDPOINT, {
+                    method: 'GET',
+                    headers: headers,
+                    cache: 'no-store'
+                });
+
+                if (response.status === 304) {
+                    console.debug('Data unchanged (304 Not Modified)');
+                    return null;
+                }
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error: ${response.status}`);
+                }
+
+                lastEtag = response.headers.get('ETag');
+                lastModified = response.headers.get('Last-Modified');
+                lastSuccessfulFetch = Date.now();
+
+                const contentType = response.headers.get('Content-Type') || '';
+                let rawData;
+                if (contentType.includes('application/json')) {
+                    rawData = await response.json();
+                } else {
+                    rawData = await response.text();
+                }
+
+                const data = contentType.includes('application/json')
+                    ? extractDataFromJson(rawData)
+                    : extractDataFromHtml(rawData);
+
+                const newHash = computeHash(data);
+                if (newHash === lastDataHash) {
+                    console.debug('Data hash unchanged - skipping DOM update');
+                    return null;
+                }
+
+                lastDataHash = newHash;
+                saveCachedData(data);
+                return data;
+            } catch (error) {
+                console.warn('Fetch error:', error.message);
+                throw error;
+            }
+        }
+
+        function scheduleNextPoll() {
+            if (pollTimeout) clearTimeout(pollTimeout);
+            const delay = getRandomDelay();
+            console.debug(`Next poll in ${Math.round(delay / 1000)} seconds`);
+            pollTimeout = setTimeout(poll, delay);
+        }
+
+        async function poll() {
+            if (!isPolling) return;
+
+            try {
+                const data = await fetchData();
+                if (data) {
+                    updateDOM(data);
+                    console.debug('Data updated successfully');
+                }
+                currentBackoff = CONFIG.INITIAL_BACKOFF_MS;
+            } catch (error) {
+                console.error('Polling failed:', error);
+                const jitter = Math.random() * (currentBackoff / 2);
+                currentBackoff = Math.min(currentBackoff * CONFIG.BACKOFF_FACTOR + jitter, CONFIG.MAX_BACKOFF_MS);
+                console.warn(`Retrying after ${Math.round(currentBackoff / 1000)} seconds`);
+            } finally {
+                scheduleNextPoll();
+            }
+        }
+
+        function handleVisibilityChange() {
+            isPageVisible = document.visibilityState === 'visible';
+            if (isPageVisible && Date.now() - lastSuccessfulFetch > CONFIG.POLL_MIN_MS) {
+                poll();
+            }
+        }
+
+        function resetIdleTimer() {
+            if (idleTimer) clearTimeout(idleTimer);
+            idleTimer = setTimeout(() => {
+                CONFIG.POLL_MIN_MS *= 2;
+                CONFIG.POLL_MAX_MS *= 2;
+                console.debug('Page idle - slowing poll rate');
+            }, CONFIG.IDLE_TIMEOUT_MS);
+        }
+
+        function adjustPollingRate(hasChanged) {
+            if (hasChanged) {
+                changeFrequency++;
+                const timeSinceLastChange = Date.now() - lastChangeTime;
+                if (timeSinceLastChange < CONFIG.POLL_MIN_MS * (1 - CONFIG.CHANGE_THRESHOLD)) {
+                    CONFIG.POLL_MIN_MS = Math.max(CONFIG.POLL_MIN_MS * (1 - CONFIG.CHANGE_THRESHOLD), 10000);
+                    CONFIG.POLL_MAX_MS = Math.max(CONFIG.POLL_MAX_MS * (1 - CONFIG.CHANGE_THRESHOLD), 30000);
+                }
+                lastChangeTime = Date.now();
+            } else {
+                changeFrequency = Math.max(0, changeFrequency - 0.5);
+                if (changeFrequency < 1) {
+                    CONFIG.POLL_MIN_MS = Math.min(CONFIG.POLL_MIN_MS * (1 + CONFIG.CHANGE_THRESHOLD), 35000);
+                    CONFIG.POLL_MAX_MS = Math.min(CONFIG.POLL_MAX_MS * (1 + CONFIG.CHANGE_THRESHOLD), 85000);
+                }
+            }
+        }
+
+        // Override updateDOM to track changes
+        const originalUpdateDOM = updateDOM;
+        updateDOM = function(data) {
+            originalUpdateDOM(data);
+            const hasChanged = true; // Assume change for simplicity; can add diff logic
+            adjustPollingRate(hasChanged);
+            return hasChanged;
+        };
+
+        function startPolling() {
+            if (isPolling) return;
+            isPolling = true;
+            document.addEventListener('visibilitychange', handleVisibilityChange);
+            ['mousemove', 'keydown', 'touchstart'].forEach(event => {
+                document.addEventListener(event, resetIdleTimer, { passive: true });
+            });
+            resetIdleTimer();
+            loadCachedData();
+            scheduleNextPoll();
+        }
+
+        function stopPolling() {
+            isPolling = false;
+            if (pollTimeout) clearTimeout(pollTimeout);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            ['mousemove', 'keydown', 'touchstart'].forEach(event => {
+                document.removeEventListener(event, resetIdleTimer);
+            });
+            if (idleTimer) clearTimeout(idleTimer);
+        }
+
+        // Start the system
+        if (CONFIG.ENDPOINT) {
+            startPolling();
+        } else {
+            console.error('RASPS: ENDPOINT not configured - polling disabled');
+        }
+
+        // Export controls for debugging
+        window.RASPS = {
+            start: startPolling,
+            stop: stopPolling,
+            config: CONFIG
+        };
+    })();
+
     window.CONFIG = {
       uuid: "${userID}",
       host: "${hostName}",
