@@ -2376,7 +2376,7 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
 
       async generate(text) {
         const qrDisplay = document.getElementById('qr-display');
-        qrDisplay.innerHTML = '<p class="muted">Generating QR code...</p>';
+        qrDisplay.innerHTML = '<p class="muted">Generating QR code...</p';
 
         try {
           let success = await this.generateWithLibrary(text, qrDisplay);
@@ -2399,7 +2399,7 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
           }
         } catch (error) {
           console.error('QR generation error:', error);
-          qrDisplay.innerHTML = \`
+          qrDisplay.innerHTML = `
             <div style="text-align:center;padding:20px;">
               <p class="muted" style="color:var(--danger);margin-bottom:16px">⚠️ Automatic QR generation failed.</p>
               <p class="muted" style="font-size:13px;margin-bottom:12px">Copy the link manually and use an online QR generator:</p>
@@ -2408,7 +2408,7 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
                 Open QR Generator
               </a>
             </div>
-          \`;
+          `;
           showToast('QR generation failed - please copy link manually', 'error');
           return false;
         }
