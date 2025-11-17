@@ -1,11 +1,10 @@
 // @ts-nocheck
 // ============================================================================
-// ULTIMATE VLESS PROXY WORKER - UNIVERSAL QR CODE VERSION - ENHANCED
+// ULTIMATE VLESS PROXY WORKER - UNIVERSAL QR CODE VERSION
 // ============================================================================
 //
 // QR Code generation with multiple fallbacks for 100% cross-browser compatibility
 // Works in Chrome, Firefox, Safari, Edge, and all mobile browsers
-// Enhanced with advanced security, performance, and reliability features
 //
 // ============================================================================
 
@@ -116,7 +115,7 @@ function addSecurityHeaders(headers, nonce, cspDomains = {}) {
     "frame-ancestors 'none'",
     "base-uri 'self'",
     nonce ? `script-src 'nonce-${nonce}' https://cdnjs.cloudflare.com https://unpkg.com 'unsafe-inline'` : "script-src 'self' https://cdnjs.cloudflare.com https://unpkg.com 'unsafe-inline'",
-    nonce ? `style-src 'nonce-${nonce}' 'unsafe-inline'` : "style-src 'self' 'unsafe-inline'",
+    nonce ? `style-src 'nonce-${nonce}' 'unsafe-inline' 'unsafe-hashes'` : "style-src 'self' 'unsafe-inline' 'unsafe-hashes'",
     `img-src 'self' data: https: blob: ${cspDomains.img || ''}`.trim(),
     `connect-src 'self' https: ${cspDomains.connect || ''}`.trim(),
   ];
@@ -1695,7 +1694,6 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
   '  <meta charset="utf-8" />',
   '  <meta name="viewport" content="width=device-width,initial-scale=1" />',
   '  <title>User Panel — VLESS Configuration</title>',
-  '  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🚀</text></svg>" />',
   '  <style nonce="CSP_NONCE_PLACEHOLDER">',
   '    :root{',
   '      --bg:#0b1220; --card:#0f1724; --muted:#9aa4b2; --accent:#3b82f6;',
@@ -1780,7 +1778,7 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
   '    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}',
   '    .hidden{display:none}',
   '    .text-center{text-align:center}',
-  '    .mb-2{margin.mb-2{margin-bottom:12px}',
+  '    .mb-2{margin-bottom:12px}',
   '    ',
   '    .expiry-warning{background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);',
   '      padding:12px;border-radius:8px;margin-top:12px;color:#fca5a5}',
@@ -1861,141 +1859,136 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
   '    <div class="grid">',
   '      <div>',
   '        <div class="card">',
-  '          <div class="section-title">' +
-  '            <h2>🌐 Network Information</h2>' +
-  '            <button class="btn ghost small" id="btn-refresh-ip">Refresh</button>' +
-  '          </div>' +
-  '          <p class="muted">Connection details and IP information for your proxy server and current location.</p>' +
-  '          <div class="info-grid">' +
-  '            <div class="info-item">' +
-  '              <span class="label">Proxy Host</span>' +
-  '              <span class="value" id="proxy-host">' + (proxyAddress || hostName) + '</span>' +
-  '            </div>' +
-  '            <div class="info-item">' +
-  '              <span class="label">Proxy IP</span>' +
-  '              <span class="value detecting" id="proxy-ip">Detecting...</span>' +
-  '            </div>' +
-  '            <div class="info-item">' +
-  '              <span class="label">Proxy Location</span>' +
-  '              <span class="value detecting" id="proxy-location">Detecting...</span>' +
-  '            </div>' +
-  '            <div class="info-item">' +
-  '              <span class="label">Your IP</span>' +
-  '              <span class="value detecting" id="client-ip">Detecting...</span>' +
-  '            </div>' +
-  '            <div class="info-item">' +
-  '              <span class="label">Your Location</span>' +
-  '              <span class="value detecting" id="client-location">Detecting...</span>' +
-  '            </div>' +
-  '            <div class="info-item">' +
-  '              <span class="label">Your ISP</span>' +
-  '              <span class="value detecting" id="client-isp">Detecting...</span>' +
-  '            </div>' +
-  '          </div>' +
+  '          <div class="section-title">',
+  '            <h2>🌐 Network Information</h2>',
+  '            <button class="btn ghost small" id="btn-refresh-ip">Refresh</button>',
+  '          </div>',
+  '          <p class="muted">Connection details and IP information for your proxy server and current location.</p>',
+  '          <div class="info-grid">',
+  '            <div class="info-item">',
+  '              <span class="label">Proxy Host</span>',
+  '              <span class="value" id="proxy-host">' + (proxyAddress || hostName) + '</span>',
+  '            </div>',
+  '            <div class="info-item">',
+  '              <span class="label">Proxy IP</span>',
+  '              <span class="value detecting" id="proxy-ip">Detecting...</span>',
+  '            </div>',
+  '            <div class="info-item">',
+  '              <span class="label">Proxy Location</span>',
+  '              <span class="value detecting" id="proxy-location">Detecting...</span>',
+  '            </div>',
+  '            <div class="info-item">',
+  '              <span class="label">Your IP</span>',
+  '              <span class="value detecting" id="client-ip">Detecting...</span>',
+  '            </div>',
+  '            <div class="info-item">',
+  '              <span class="label">Your Location</span>',
+  '              <span class="value detecting" id="client-location">Detecting...</span>',
+  '            </div>',
+  '            <div class="info-item">',
+  '              <span class="label">Your ISP</span>',
+  '              <span class="value detecting" id="client-isp">Detecting...</span>',
+  '            </div>',
+  '          </div>',
   '        </div>',
   '',
-  '        <div class="card">' +
-  '          <div class="section-title">' +
-  '            <h2>📱 Subscription Links</h2>' +
-  '          </div>' +
+  '        <div class="card">',
+  '          <div class="section-title">',
+  '            <h2>📱 Subscription Links</h2>',
+  '          </div>',
   '          <p class="muted">Copy subscription URLs or import directly into your VPN client application.</p>',
   '',
-  '          <div class="stack">' +
-  '            <div>' +
-  '              <h3 style="font-size:16px;margin:12px 0 8px;color:var(--accent-2)">Xray / V2Ray Subscription</h3>' +
-  '              <div class="buttons">' +
-  '                <button class="btn primary" id="copy-xray-sub">📋 Copy Xray Link</button>' +
-  '                <button class="btn ghost" id="show-xray-config">View Config</button>' +
-  '                <button class="btn ghost" id="qr-xray-sub-btn">QR Code</button>' +
-  '              </div>' +
-  '              <pre class="config hidden" id="xray-config">' + escapeHTML(singleXrayConfig) + '</pre>' +
+  '          <div class="stack">',
+  '            <div>',
+  '              <h3 style="font-size:16px;margin:12px 0 8px;color:var(--accent-2)">Xray / V2Ray Subscription</h3>',
+  '              <div class="buttons">',
+  '                <button class="btn primary" id="copy-xray-sub">📋 Copy Xray Link</button>',
+  '                <button class="btn ghost" id="show-xray-config">View Config</button>',
+  '                <button class="btn ghost" id="qr-xray-sub-btn">QR Code</button>',
+  '              </div>',
+  '              <pre class="config hidden" id="xray-config">' + escapeHTML(singleXrayConfig) + '</pre>',
   '            </div>',
   '',
-  '            <div>' +
-  '              <h3 style="font-size:16px;margin:12px 0 8px;color:var(--accent-2)">Sing-Box / Clash Subscription</h3>' +
-  '              <div class="buttons">' +
-  '                <button class="btn primary" id="copy-sb-sub">📋 Copy Singbox Link</button>' +
-  '                <button class="btn ghost" id="show-sb-config">View Config</button>' +
-  '                <button class="btn ghost" id="qr-sb-sub-btn">QR Code</button>' +
-  '              </div>' +
-  '              <pre class="config hidden" id="sb-config">' + escapeHTML(singleSingboxConfig) + '</pre>' +
+  '            <div>',
+  '              <h3 style="font-size:16px;margin:12px 0 8px;color:var(--accent-2)">Sing-Box / Clash Subscription</h3>',
+  '              <div class="buttons">',
+  '                <button class="btn primary" id="copy-sb-sub">📋 Copy Singbox Link</button>',
+  '                <button class="btn ghost" id="show-sb-config">View Config</button>',
+  '                <button class="btn ghost" id="qr-sb-sub-btn">QR Code</button>',
+  '              </div>',
+  '              <pre class="config hidden" id="sb-config">' + escapeHTML(singleSingboxConfig) + '</pre>',
   '            </div>',
   '',
-  '            <div>' +
-  '              <h3 style="font-size:16px;margin:12px 0 8px;color:var(--accent-2)">Quick Import</h3>' +
-  '              <div class="buttons">' +
-  '                <a href="' + clientUrls.universalAndroid + '" rel="noopener noreferrer" class="btn ghost">📱 Android (V2rayNG)</a>' +
-  '                <a href="' + clientUrls.shadowrocket + '" rel="noopener noreferrer" class="btn ghost">🍎 iOS (Shadowrocket)</a>' +
-  '                <a href="' + clientUrls.streisand + '" rel="noopener noreferrer" class="btn ghost">🍎 iOS Streisand</a>' +
-  '                <a href="' + clientUrls.karing + '" rel="noopener noreferrer" class="btn ghost">🔧 Android/iOS Karing</a>' +
-  '              </div>' +
-  '            </div>' +
-  '          </div>' +
-  '        </div>' +
+  '            <div>',
+  '              <h3 style="font-size:16px;margin:12px 0 8px;color:var(--accent-2)">Quick Import</h3>',
+  '              <div class="buttons">',
+  '                <a href="' + clientUrls.universalAndroid + '" rel="noopener noreferrer" class="btn ghost">📱 Android (V2rayNG)</a>',
+  '                <a href="' + clientUrls.shadowrocket + '" rel="noopener noreferrer" class="btn ghost">🍎 iOS (Shadowrocket)</a>',
+  '                <a href="' + clientUrls.streisand + '" rel="noopener noreferrer" class="btn ghost">🍎 iOS Streisand</a>',
+  '                <a href="' + clientUrls.karing + '" rel="noopener noreferrer" class="btn ghost">🔧 Android/iOS Karing</a>',
+  '              </div>',
+  '            </div>',
+  '          </div>',
+  '        </div>',
   '      </div>',
   '',
-  '      <aside>' +
-  '        <div class="card">' +
-  '          <h2>QR Code Scanner</h2>' +
-  '          <p class="muted mb-2">Scan with your mobile device to quickly import configuration.</p>' +
-  '          <div id="qr-display" class="text-center">' +
-  '            <p class="muted">Click any "QR Code" button to generate a scannable code.</p>' +
-  '          </div>' +
-  '          <div class="buttons" style="justify-content:center;margin-top:16px">' +
-  '            <button class="btn ghost small" id="qr-xray-config-btn">Xray Config QR</button>' +
-  '            <button class="btn ghost small" id="qr-sb-config-btn">Singbox Config QR</button>' +
-  '          </div>' +
+  '      <aside>',
+  '        <div class="card">',
+  '          <h2>QR Code Scanner</h2>',
+  '          <p class="muted mb-2">Scan with your mobile device to quickly import configuration.</p>',
+  '          <div id="qr-display" class="text-center">',
+  '            <p class="muted">Click any "QR Code" button to generate a scannable code.</p>',
+  '          </div>',
+  '          <div class="buttons" style="justify-content:center;margin-top:16px">',
+  '            <button class="btn ghost small" id="qr-xray-config-btn">Xray Config QR</button>',
+  '            <button class="btn ghost small" id="qr-sb-config-btn">Singbox Config QR</button>',
+  '          </div>',
   '        </div>',
   '',
-  '        <div class="card">' +
-  '          <h2>👤 Account Details</h2>' +
-  '          <div class="info-item" style="margin-top:12px">' +
-  '            <span class="label">User UUID</span>' +
-  '            <span class="value" style="font-family:var(--mono);font-size:12px;word-break:break-all">' + userID + '</span>' +
-  '          </div>' +
-  '          <div class="info-item" style="margin-top:12px">' +
-  '            <span class="label">Created Date</span>' +
-  '            <span class="value">' + new Date(userData.created_at).toLocaleDateString() + '</span>' +
+  '        <div class="card">',
+  '          <h2>👤 Account Details</h2>',
+  '          <div class="info-item" style="margin-top:12px">',
+  '            <span class="label">User UUID</span>',
+  '            <span class="value" style="font-family:var(--mono);font-size:12px;word-break:break-all">' + userID + '</span>',
   '          </div>',
-  (userData.notes ? 
+  '          <div class="info-item" style="margin-top:12px">',
+  '            <span class="label">Created Date</span>',
+  '            <span class="value">' + new Date(userData.created_at).toLocaleDateString() + '</span>',
+  '          </div>',
+ (userData.notes ? 
   '          <div class="info-item" style="margin-top:12px">' +
   '            <span class="label">Notes</span>' +
   '            <span class="value">' + escapeHTML(userData.notes) + '</span>' +
   '          </div>'
   : '') ,
-  '          <div class="info-item" style="margin-top:12px">' +
-  '            <span class="label">IP Limit</span>' +
-  '            <span class="value">' + (userData.ip_limit === -1 ? 'Unlimited' : userData.ip_limit) + '</span>' +
-  '          </div>' +
+  '          <div class="info-item" style="margin-top:12px">',
+  '            <span class="label">IP Limit</span>',
+  '            <span class="value">' + (userData.ip_limit === -1 ? 'Unlimited' : userData.ip_limit) + '</span>',
+  '          </div>',
   '        </div>',
   '',
-  '        <div class="card">' +
-  '          <h2>💾 Export Configuration</h2>' +
-  '          <p class="muted mb-2">Download configuration file for manual import or backup purposes.</p>' +
-  '          <div class="buttons">' +
-  '            <button class="btn primary small" id="download-xray">Download Xray</button>' +
-  '            <button class="btn primary small" id="download-sb">Download Singbox</button>' +
-  '          </div>' +
-  '        </div>' +
-  '      </aside>' +
+  '        <div class="card">',
+  '          <h2>💾 Export Configuration</h2>',
+  '          <p class="muted mb-2">Download configuration file for manual import or backup purposes.</p>',
+  '          <div class="buttons">',
+  '            <button class="btn primary small" id="download-xray">Download Xray</button>',
+  '            <button class="btn primary small" id="download-sb">Download Singbox</button>',
+  '          </div>',
+  '        </div>',
+  '      </aside>',
   '    </div>',
   '',
-  '    <div class="card">' +
-  '      <p class="muted text-center" style="margin:0">' +
+  '    <div class="card">',
+  '      <p class="muted text-center" style="margin:0">',
   '        🔒 This is your personal configuration panel. Keep your subscription links private and secure.',
   '        <br>For support or questions, contact your service administrator.',
-  '      </p>' +
+  '      </p>',
   '    </div>',
   '',
   '    <div id="toast"></div>',
   '  </div>',
   '',
-  '  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" nonce="CSP_NONCE_PLACEHOLDER"></script>',
-  '',
   '  <script nonce="CSP_NONCE_PLACEHOLDER">',
-  '    // Make formatBytes available globally',
-  '    window.formatBytes = ' + formatBytes.toString() + ';',
-  '',
   '    window.CONFIG = {',
   '      uuid: "' + userID + '",',
   '      host: "' + hostName + '",',
@@ -2010,6 +2003,16 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
   '      trafficLimit: ' + (userData.traffic_limit || 'null') + ',',
   '      initialTrafficUsed: ' + (userData.traffic_used || 0) + '',
   '    };',
+  '',
+  '    function formatBytes(bytes) {',
+  '      if (bytes === 0) return \'0 Bytes\';',
+  '      const k = 1024;',
+  '      const sizes = [\'Bytes\', \'KB\', \'MB\', \'GB\', \'TB\'];',
+  '      const i = Math.floor(Math.log(bytes) / Math.log(k));',
+  '      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + \' \' + sizes[i];',
+  '    }',
+  '',
+  'var QRCode=function(){"use strict";function e(e){this.mode=c.MODE_8BIT_BYTE,this.data=e,this.parsedData=[];for(var t=0,r=this.data.length;t<r;t++){var o=[],a=this.data.charCodeAt(t);a>65535?(o[0]=240|(a&1835008)>>>18,o[1]=128|(a&258048)>>>12,o[2]=128|(a&4032)>>>6,o[3]=128|a&63):a>2047?(o[0]=224|(a&61440)>>>12,o[1]=128|(a&4032)>>>6,o[2]=128|a&63):a>127?(o[0]=192|(a&1984)>>>6,o[1]=128|a&63):(o[0]=a),this.parsedData.push(o)}this.parsedData=Array.prototype.concat.apply([],this.parsedData),this.parsedData.length!=this.data.length&&(this.parsedData.unshift(191),this.parsedData.unshift(187),this.parsedData.unshift(239))}function t(e,t){this.typeNumber=e,this.errorCorrectLevel=t,this.modules=null,this.moduleCount=0,this.dataCache=null,this.dataList=[]}e.prototype={getLength:function(e){return this.parsedData.length},write:function(e){for(var t=0,r=this.parsedData.length;t<r;t++)e.put(this.parsedData[t],8)}}e.prototype.addData=function(e){var t=new e(e);this.dataList.push(t),this.dataCache=null},t.prototype.isDark=function(e,t){if(e<0||this.moduleCount<=e||t<0||this.moduleCount<=t)throw new Error(e+","+t);return this.modules[e][t]},t.prototype.getModuleCount=function(){return this.moduleCount},t.prototype.make=function(){this.makeImpl(!1,this.getBestMaskPattern())},t.prototype.makeImpl=function(e,t){this.moduleCount=4*this.typeNumber+17,this.modules=new Array(this.moduleCount);for(var r=0;r<this.moduleCount;r++){this.modules[r]=new Array(this.moduleCount);for(var o=0;o<this.moduleCount;o++)this.modules[r][o]=null}this.setupPositionProbePattern(0,0),this.setupPositionProbePattern(this.moduleCount-7,0),this.setupPositionProbePattern(0,this.moduleCount-7),this.setupPositionAdjustPattern(),this.setupTimingPattern(),this.setupTypeInfo(e,t),this.typeNumber>=7&&this.setupTypeNumber(e),null==this.dataCache&&(this.dataCache=t.createData(this.typeNumber,this.errorCorrectLevel,this.dataList)),this.mapData(this.dataCache,t)} ,t.prototype.setupPositionProbePattern=function(e,t){for(var r=e-1;r<=e+7;r++)if(!(r<0||this.moduleCount<=r))for(var o=t-1;o<=t+7;o++)o<0||this.moduleCount<=o||(r==e&&o==t||r==e+6&&o==t||r==e&&o==t+6||r==e+6&&o==t+6||r==e+2&&o==t+2||r==e+3&&o==t+2||r==e+4&&o==t+2||r==e+2&&o==t+3||r==e+3&&o==t+3||r==e+4&&o==t+3||r==e+2&&o==t+4||r==e+3&&o==t+4||r==e+4&&o==t+4?this.modules[r][o]=!1:this.modules[r][o]=!0)},t.prototype.setupPositionAdjustPattern=function(){for(var e=c.getPatternPosition(this.typeNumber),t=0;t<e.length;t++)for(var r=0;r<e.length;r++)if(t!=r||this.typeNumber>=7){var o=e[t],a=e[r];if(null==this.modules[o][a]){this.modules[o][a]=!0,this.modules[o-1][a]=!0,this.modules[o+1][a]=!0,this.modules[o][a-1]=!0,this.modules[o][a+1]=!0,this.modules[o-2][a-2]=!0,this.modules[o-2][a-1]=!0,this.modules[o-2][a]=!0,this.modules[o-2][a+1]=!0,this.modules[o-2][a+2]=!0,this.modules[o-1][a-2]=!0,this.modules[o-1][a+2]=!0,this.modules[o][a-2]=!0,this.modules[o][a+2]=!0,this.modules[o+1][a-2]=!0,this.modules[o+1][a+2]=!0,this.modules[o+2][a-2]=!0,this.modules[o+2][a-1]=!0,this.modules[o+2][a]=!0,this.modules[o+2][a+1]=!0,this.modules[o+2][a+2]=!0}}},t.prototype.setupTimingPattern=function(){for(var e=8;e<this.moduleCount-8;e++)null==this.modules[e][6]&&(this.modules[e][6]=e%2==0);for(var t=8;t<this.moduleCount-8;t++)null==this.modules[6][t]&&(this.modules[6][t]=t%2==0)},t.prototype.setupTypeNumber=function(e){for(var t=c.getBCHTypeNumber(this.typeNumber),r=0;r<18;r++){var o=!e&&1==(t>>r&1);this.modules[Math.floor(r/3)][r%3+this.moduleCount-8-3]=o}for(var r=0;r<18;r++){var o=!e&&1==(t>>r&1);this.modules[r%3+this.moduleCount-8-3][Math.floor(r/3)]=o}},t.prototype.setupTypeInfo=function(e,t){for(var r=this.errorCorrectLevel<<3|t,o=c.getBCHTypeInfo(r),a=0;a<15;a++){var i=!e&&1==(o>>a&1);a<6?this.modules[a][8]=i:a<8?this.modules[a+1][8]=i:this.modules[this.moduleCount-15+a][8]=i}for(var a=0;a<15;a++){var i=!e&&1==(o>>a&1);a<8?this.modules[8][this.moduleCount-a-1]=i:a<9?this.modules[8][15-a-1+1]=i:this.modules[8][15-a-1]=i}this.modules[this.moduleCount-8][8]=!e},t.prototype.mapData=function(e,t){for(var r=-1,o=this.moduleCount-1,a=7,i=0,n=this.moduleCount-1;n>0;n-=2)for(6==n&&n--; ; ){for(var s=0;s<2;s++)if(null==this.modules[o][n-s]){var u=!1;i<e.length&&(u=1==(e[i]>>>a&1)),c.getMask(t,o,n-s)&&(u=!u),this.modules[o][n-s]=u,a--,-1==a&&(i++,a=7)}if(o+=r,o<0||this.moduleCount<=o){o-=r,r=-r;break}}},t.PAD0=236,t.PAD1=17,t.createData=function(r,o,a){var i=c.getRSBlocks(r,o),n=new t;for(var s=0;s<a.length;s++){var u=a[s];n.addData(u.mode,u.getLength(),u),n.put(u.mode,4),n.put(u.getLength(),c.getLengthInBits(u.mode,r)),u.write(n)}var l=0;for(s=0;s<i.length;s++)l+=i[s].dataCount;for(s=0;s<n.getBuffer().length;s++)n.put(n.getBuffer()[s],8);var h=(l-n.getLengthInBits()/8)*8;n.put(0,4),n.put(h,c.getLengthInBits(4,r));for(var p=0;p<h/8;p++)n.put(t.PAD0,8);for(var d=0;d<i.length;d++){var f=i[d];for(p=0;p<f.totalCount-f.dataCount;p++)n.put(0,8)}var m=e.getErrorCorrectPolynomial(f.dataCount);for(p=0;p<f.dataCount;p++){var g=n.getBuffer()[p*f.dataCount+p];n.put(g,8)}var b=new Array(f.dataCount);for(p=0;p<f.dataCount;p++){var v=n.getBuffer()[p];b[p]=v&255;for(var y=0;y<m.getLength()-1;y++)b[p]^=e.gexp(e.glog[b[p]]+m.get(y))}for(p=0;p<f.dataCount;p++)n.put(b[p],8);return n.getBuffer()},t.createBytes=function(t,r){for(var o=0,a=0,i=0,n=new Array(r.length),s=new Array(r.length),u=0;u<r.length;u++){var l=r[u].dataCount,h=r[u].totalCount-l;a=Math.max(a,l),i=Math.max(i,h),n[u]=new Array(l);for(var p=0;p<l;p++)n[u][p]=255&t.buffer[p+o];o+=l;var d=c.getErrorCorrectPolynomial(h),f=(new e(n[u],d.getLength()-1)).mod(d);s[u]=new Array(d.getLength()-1);for(var p=0;p<s[u].length;p++){var m=p+f.getLength()-s[u].length;s[u][p]=m>=0?f.get(m):0}}for(var g=0,p=0;p<r.length;p++)g+=r[p].totalCount;for(var b=new Array(g),v=0,p=0;p<a;p++)for(var u=0;u<r.length;u++)p<n[u].length&&(b[v++]=n[u][p]);for(var p=0;p<i;p++)for(var u=0;u<r.length;u++)p<s[u].length&&(b[v++]=s[u][p]);return b};var r={MODE_NUMBER:1,MODE_ALPHA_NUM:2,MODE_8BIT_BYTE:4,MODE_KANJI:8},o={L:1,M:0,Q:3,H:2},a={PATTERN000:0,PATTERN001:1,PATTERN010:2,PATTERN011:3,PATTERN100:4,PATTERN101:5,PATTERN110:6,PATTERN111:7},c={PATTERN_POSITION_TABLE:[[],[6,18],[6,22],[6,26],[6,30],[6,34],[6,22,38],[6,24,42],[6,26,46],[6,28,50],[6,30,54],[6,32,58],[6,34,62],[6,26,46,66],[6,26,48,70],[6,26,50,74],[6,30,54,78],[6,30,56,82],[6,30,58,86],[6,34,62,90],[6,28,50,72,94],[6,26,50,74,98],[6,30,54,78,102],[6,28,54,80,106],[6,32,58,84,110],[6,30,58,86,114],[6,34,62,90,118],[6,26,50,74,98,122],[6,30,54,78,102,126],[6,26,52,78,104,130],[6,30,56,82,108,134],[6,34,60,86,112,138],[6,30,58,86,114,142],[6,34,62,90,118,146],[6,30,54,78,102,126,150],[6,24,50,76,102,128,154],[6,28,54,80,106,132,158],[6,32,58,84,110,136,162],[6,26,54,82,110,138,166],[6,30,58,86,114,142,170]],G15:1335,G18:7973,G15_MASK:21522,getBCHTypeInfo:function(e){for(var t=e<<10;c.getBCHDigit(t)-c.getBCHDigit(c.G15)>=0;)t^=c.G15<<c.getBCHDigit(t)-c.getBCHDigit(c.G15);return(e<<10|t)^c.G15_MASK},getBCHTypeNumber:function(e){for(var t=e<<12;c.getBCHDigit(t)-c.getBCHDigit(c.G18)>=0;)t^=c.G18<<c.getBCHDigit(t)-c.getBCHDigit(c.G18);return e<<12|t},getBCHDigit:function(e){for(var t=0;0!=e;)t++,e>>>=1;return t},getPatternPosition:function(e){return c.PATTERN_POSITION_TABLE[e-1]},getMask:function(e,t,r){switch(e){case a.PATTERN000:return(t+r)%2==0;case a.PATTERN001:return t%2==0;case a.PATTERN010:return r%3==0;case a.PATTERN011:return(t+r)%3==0;case a.PATTERN100:return(Math.floor(t/2)+Math.floor(r/3))%2==0;case a.PATTERN101:return t*r%2+t*r%3==0;case a.PATTERN110:return(t*r%2+t*r%3)%2==0;case a.PATTERN111:return(t*r%3+(t+r)%2)%2==0;default:throw new Error("bad maskPattern:"+e)}},getErrorCorrectPolynomial:function(t){for(var r=new e([1],0),o=0;o<t;o++)r=r.multiply(new e([1,c.gexp(o)],0));return r},getLengthInBits:function(e,t){if(1<=t&&t<10)switch(e){case r.MODE_NUMBER:return 10;case r.MODE_ALPHA_NUM:return 9;case r.MODE_8BIT_BYTE:return 8;case r.MODE_KANJI:return 8;default:throw new Error("mode:"+e)}else if(t<27)switch(e){case r.MODE_NUMBER:return 12;case r.MODE_ALPHA_NUM:return 11;case r.MODE_8BIT_BYTE:return 16;case r.MODE_KANJI:return 10;default:throw new Error("mode:"+e)}else{if(!(t<41))throw new Error("type:"+t);switch(e){case r.MODE_NUMBER:return 14;case r.MODE_ALPHA_NUM:return 13;case r.MODE_8BIT_BYTE:return 16;case r.MODE_KANJI:return 12;default:throw new Error("mode:"+e)}}},gexp:function(e){for(;e<0;)e+=255;for(;e>=256;)e-=255;return c.EXP_TABLE[e]},glog:function(e){if(e<1)throw new Error("glog("+e+")");return c.LOG_TABLE[e]},getRSBlocks:function(e,t){switch(t){case o.L:return c.RS_BLOCK_TABLE[4*(e-1)+0];case o.M:return c.RS_BLOCK_TABLE[4*(e-1)+1];case o.Q:return c.RS_BLOCK_TABLE[4*(e-1)+2];case o.H:return c.RS_BLOCK_TABLE[4*(e-1)+3];default:throw new Error("bad rs block @ typeNumber: "+e+"/errorCorrectLevel: "+t)}};c.EXP_TABLE=new Array(256);for(var i=0;i<8;i++)c.EXP_TABLE[i]=1<<i;for(var i=8;i<256;i++)c.EXP_TABLE[i]=c.EXP_TABLE[i-4]^c.EXP_TABLE[i-5]^c.EXP_TABLE[i-6]^c.EXP_TABLE[i-8];c.LOG_TABLE=new Array(256);for(var i=0;i<255;i++)c.LOG_TABLE[c.EXP_TABLE[i]]=i;var n={create:function(e){if(void 0==e||""==e)return new n;var r=new t(1,o.H,[new e(e)]);return r},toCanvas:function(t,r,o,a,i){var s=n.create(r);if(t.nodeName.toUpperCase()=="CANVAS"){var u=t}else{var u=document.createElement("canvas");t.appendChild(u)}o&&(u.style.width=o,u.style.height=o);var l=s.getModuleCount(),h=o?o/l:a?a:Math.max(1,Math.floor(l/100)),p=Math.floor(l*h),d=Math.floor((p-l*h)/2);u.width=p,u.height=p;var f=u.getContext("2d");f.clearRect(0,0,p,p),i&&f.fillStyle=i,f.fillRect(0,0,p,p),f.fillStyle="#000000";for(var m=0;m<l;m++)for(var g=0;g<l;g++)s.isDark(m,g)&&f.fillRect(Math.floor(m*h)+d,Math.floor(g*h)+d,h,h);return u},toDataURL:function(e,t,r){var o=n.create(e).getModuleCount(),a=document.createElement("canvas");a.width=o,a.height=o;var i=a.getContext("2d");i.fillStyle=t?t:"#FFFFFF",i.fillRect(0,0,o,o),i.fillStyle=r?r:"#000000";for(var s=0;s<o;s++)for(var u=0;u<o;u++)n.isDark(s,u)&&i.fillRect(s,u,1,1);return a.toDataURL("image/png")}};return n}();',
   '',
   '    // =========================================',
   '    // UNIVERSAL QR CODE GENERATION',
@@ -2364,7 +2367,7 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
   '              country: data.country_name || \'\',',
   '              isp: data.org || \'\'',
   '            };',
-  '          },',
+  '          }',
   '        },',
   '        {',
   '          url: clientIP ? \`https://ip-api.com/json/\${clientIP}?fields=status,message,city,country,isp\` : \'https://ip-api.com/json/?fields=status,message,city,country,isp\',',
@@ -2376,7 +2379,7 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
   '              country: data.country || \'\',',
   '              isp: data.isp || \'\'',
   '            };',
-  '          },',
+  '          }',
   '        },',
   '        {',
   '          url: clientIP ? \`https://ipwho.is/\${clientIP}\` : \'https://ipwho.is/\',',
@@ -2388,7 +2391,7 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
   '              country: data.country || \'\',',
   '              isp: data.connection?.isp || \'\'',
   '            };',
-  '          },',
+  '          }',
   '        },',
   '        {',
   '          url: clientIP ? \`https://freegeoip.app/json/\${clientIP}\` : \'https://freegeoip.app/json/\',',
@@ -2489,7 +2492,7 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
   '              city: data.city || \'\',',
   '              country: data.country_name || \'\'',
   '            };',
-  '          },',
+  '          }',
   '        },',
   '        {',
   '          url: \`https://ip-api.com/json/\${proxyIP}?fields=status,message,city,country\`,',
@@ -2500,7 +2503,7 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
   '              city: data.city || \'\',',
   '              country: data.country || \'\'',
   '            };',
-  '          },',
+  '          }',
   '        },',
   '        {',
   '          url: \`https://ipwho.is/\${proxyIP}\`,',
@@ -2512,6 +2515,7 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
   '              country: data.country || \'\'',
   '            };',
   '          }',
+  '        }',
   '      ];',
   '',
   '      let proxyGeo = null;',
@@ -2706,6 +2710,258 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
   '      setInterval(updateExpirationDisplay, 1000); // Update every second for precise countdown',
   '      startUserAutoRefresh(); // Start auto-refresh for user panel',
   '    });',
+  '    ',
+  '    // ============================================================================',
+  '    // INTEGRATED ULTRA ADAPTIVE SMART POLLING (RASPS) - ADVANCED AUTO-REFRESH',
+  '    // ============================================================================',
+  '    ',
+  '    (function() {',
+  '        const CONFIG = {',
+  '            ENDPOINT: \'/api/user/\' + window.CONFIG.uuid,',
+  '            POLL_MIN_MS: 50000, // Adjusted base to ~1min with jitter',
+  '            POLL_MAX_MS: 70000,',
+  '            INACTIVE_MULTIPLIER: 4,',
+  '            MAX_BACKOFF_MS: 300000,',
+  '            INITIAL_BACKOFF_MS: 2000,',
+  '            BACKOFF_FACTOR: 1.8,',
+  '            USE_ETAG: true,',
+  '            FIELDS_TO_TRACK: [\'usedMB\', \'data_used\', \'limitMB\', \'data_limit\', \'expires\', \'status\'],',
+  '            DOM_SELECTORS: {',
+  '                usage: \'#usage-display\',',
+  '                status: \'#status-badge\',',
+  '                time: \'#expiry-countdown\'',
+  '            }',
+  '        };',
+  '',
+  '        let lastEtag = null;',
+  '        let lastModified = null;',
+  '        let lastDataHash = null;',
+  '        let currentBackoff = CONFIG.INITIAL_BACKOFF_MS;',
+  '        let isPolling = false;',
+  '        let pollTimeout = null;',
+  '        let isPageVisible = document.visibilityState === \'visible\';',
+  '        let lastSuccessfulFetch = Date.now();',
+  '',
+  '        function getRandomDelay() {',
+  '            const baseMin = CONFIG.POLL_MIN_MS;',
+  '            const baseMax = CONFIG.POLL_MAX_MS;',
+  '            const multiplier = isPageVisible ? 1 : CONFIG.INACTIVE_MULTIPLIER;',
+  '            const minDelay = baseMin * multiplier;',
+  '            const maxDelay = baseMax * multiplier;',
+  '            return Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;',
+  '        }',
+  '',
+  '        function computeHash(data) {',
+  '            const str = JSON.stringify(data);',
+  '            let hash = 0;',
+  '            for (let i = 0; i < str.length; i++) {',
+  '                const char = str.charCodeAt(i);',
+  '                hash = ((hash << 5) - hash) + char;',
+  '                hash = hash & hash;',
+  '            }',
+  '            return hash.toString(36);',
+  '        }',
+  '',
+  '        function extractDataFromJson(json) {',
+  '            return {',
+  '                usedMB: json.traffic_used || json.usedMB,',
+  '                limitMB: json.traffic_limit || json.limitMB,',
+  '                expires: json.expiration_date + \'T\' + json.expiration_time + \'Z\' || json.expires,',
+  '                status: json.status',
+  '            };',
+  '        }',
+  '',
+  '        function extractDataFromHtml(html) {',
+  '            const parser = new DOMParser();',
+  '            const doc = parser.parseFromString(html, \'text/html\');',
+  '            return {',
+  '                usedMB: doc.querySelector(CONFIG.DOM_SELECTORS.usage)?.textContent.trim() || null,',
+  '                expires: doc.querySelector(CONFIG.DOM_SELECTORS.time)?.textContent.trim() || null,',
+  '                status: doc.querySelector(CONFIG.DOM_SELECTORS.status)?.textContent.trim() || null',
+  '            };',
+  '        }',
+  '',
+  '        function updateDOM(data) {',
+  '            const usageEl = document.querySelector(CONFIG.DOM_SELECTORS.usage);',
+  '            const timeEl = document.querySelector(CONFIG.DOM_SELECTORS.time);',
+  '            const statusEl = document.querySelector(CONFIG.DOM_SELECTORS.status);',
+  '',
+  '            if (usageEl && data.usedMB && data.limitMB) {',
+  '                const percentage = ((data.usedMB / data.limitMB) * 100).toFixed(1);',
+  '                usageEl.textContent = formatBytes(data.usedMB) || \'0 Bytes\';',
+  '                const usageStat = document.querySelector(\'.section-title span.muted\');',
+  '                if (usageStat) {',
+  '                    usageStat.textContent = percentage + \'% Used\';',
+  '                }',
+  '                const progressFill = document.getElementById(\'progress-bar-fill\');',
+  '                if (progressFill) {',
+  '                    progressFill.dataset.targetWidth = percentage;',
+  '                    progressFill.className = \'progress-fill \' + (percentage > 80 ? \'high\' : percentage > 50 ? \'medium\' : \'low\');',
+  '                    animateProgressBar(percentage);',
+  '                }',
+  '                const usageText = document.querySelector(\'.progress-bar + p\');',
+  '                if (usageText) {',
+  '                    usageText.textContent = formatBytes(data.usedMB) + \' of \' + formatBytes(data.limitMB) + \' used\';',
+  '                }',
+  '            }',
+  '            if (timeEl && data.expires) {',
+  '                window.CONFIG.expirationDateTime = data.expires;',
+  '                updateExpirationDisplay();',
+  '            }',
+  '            if (statusEl && data.status) {',
+  '                statusEl.textContent = data.status;',
+  '                statusEl.parentElement.className = \'stat \' + (data.status === \'Expired\' ? \'status-expired\' : \'status-active\');',
+  '            }',
+  '            showToast(\'Data refreshed\', \'success\');',
+  '        }',
+  '',
+  '        async function fetchData() {',
+  '            const headers = new Headers({',
+  '                \'Cache-Control\': \'no-cache\'',
+  '            });',
+  '            if (CONFIG.USE_ETAG && lastEtag) {',
+  '                headers.set(\'If-None-Match\', lastEtag);',
+  '            }',
+  '            if (lastModified) {',
+  '                headers.set(\'If-Modified-Since\', lastModified);',
+  '            }',
+  '',
+  '            try {',
+  '                const response = await fetch(CONFIG.ENDPOINT, {',
+  '                    method: \'GET\',',
+  '                    headers: headers,',
+  '                    cache: \'no-store\'',
+  '                });',
+  '',
+  '                if (response.status === 304) {',
+  '                    console.debug(\'Data unchanged (304 Not Modified)\');',
+  '                    return null;',
+  '                }',
+  '',
+  '                if (!response.ok) {',
+  '                    throw new Error(\'HTTP error: \' + response.status);',
+  '                }',
+  '',
+  '                lastEtag = response.headers.get(\'ETag\');',
+  '                lastModified = response.headers.get(\'Last-Modified\');',
+  '                lastSuccessfulFetch = Date.now();',
+  '',
+  '                const contentType = response.headers.get(\'Content-Type\') || \'\';',
+  '                let rawData;',
+  '                if (contentType.includes(\'application/json\')) {',
+  '                    rawData = await response.json();',
+  '                } else {',
+  '                    rawData = await response.text();',
+  '                }',
+  '',
+  '                const data = contentType.includes(\'application/json\')',
+  '                    ? extractDataFromJson(rawData)',
+  '                    : extractDataFromHtml(rawData);',
+  '',
+  '                const newHash = computeHash(data);',
+  '                if (newHash === lastDataHash) {',
+  '                    console.debug(\'Data hash unchanged - skipping DOM update\');',
+  '                    return null;',
+  '                }',
+  '',
+  '                lastDataHash = newHash;',
+  '                return data;',
+  '            } catch (error) {',
+  '                console.warn(\'Fetch error:\', error.message);',
+  '                throw error;',
+  '            }',
+  '        }',
+  '',
+  '        function scheduleNextPoll() {',
+  '            if (pollTimeout) clearTimeout(pollTimeout);',
+  '            const delay = getRandomDelay();',
+  '            console.debug(\'Next poll in \' + Math.round(delay / 1000) + \' seconds\');',
+  '            pollTimeout = setTimeout(poll, delay);',
+  '        }',
+  '',
+  '        async function poll() {',
+  '            if (!isPolling) return;',
+  '',
+  '            try {',
+  '                const data = await fetchData();',
+  '                if (data) {',
+  '                    updateDOM(data);',
+  '                    console.debug(\'Data updated successfully\');',
+  '                }',
+  '                currentBackoff = CONFIG.INITIAL_BACKOFF_MS;',
+  '            } catch (error) {',
+  '                console.error(\'Polling failed:\', error);',
+  '                const jitter = Math.random() * (currentBackoff / 2);',
+  '                currentBackoff = Math.min(currentBackoff * CONFIG.BACKOFF_FACTOR + jitter, CONFIG.MAX_BACKOFF_MS);',
+  '                console.warn(\'Retrying after \' + Math.round(currentBackoff / 1000) + \' seconds\');',
+  '            } finally {',
+  '                scheduleNextPoll();',
+  '            }',
+  '        }',
+  '',
+  '        function handleVisibilityChange() {',
+  '            isPageVisible = document.visibilityState === \'visible\';',
+  '            if (isPageVisible && Date.now() - lastSuccessfulFetch > CONFIG.POLL_MIN_MS) {',
+  '                poll();',
+  '            }',
+  '        }',
+  '',
+  '        function startPolling() {',
+  '            if (isPolling) return;',
+  '            isPolling = true;',
+  '            document.addEventListener(\'visibilitychange\', handleVisibilityChange);',
+  '            scheduleNextPoll();',
+  '        }',
+  '',
+  '        function stopPolling() {',
+  '            isPolling = false;',
+  '            if (pollTimeout) clearTimeout(pollTimeout);',
+  '            document.removeEventListener(\'visibilitychange\', handleVisibilityChange);',
+  '        }',
+  '',
+  '        // Advanced features: Idle detection and adaptive rate based on change frequency',
+  '        let changeFrequency = 0;',
+  '        let lastChangeTime = Date.now();',
+  '        function adjustPollingRate(hasChanged) {',
+  '            if (hasChanged) {',
+  '                changeFrequency++;',
+  '                const timeSinceLastChange = Date.now() - lastChangeTime;',
+  '                if (timeSinceLastChange < CONFIG.POLL_MIN_MS) {',
+  '                    CONFIG.POLL_MIN_MS = Math.max(CONFIG.POLL_MIN_MS / 1.2, 10000);',
+  '                    CONFIG.POLL_MAX_MS = Math.max(CONFIG.POLL_MAX_MS / 1.2, 30000);',
+  '                }',
+  '                lastChangeTime = Date.now();',
+  '            } else {',
+  '                changeFrequency = Math.max(0, changeFrequency - 0.5);',
+  '                if (changeFrequency < 1) {',
+  '                    CONFIG.POLL_MIN_MS = Math.min(CONFIG.POLL_MIN_MS * 1.1, 35000);',
+  '                    CONFIG.POLL_MAX_MS = Math.min(CONFIG.POLL_MAX_MS * 1.1, 85000);',
+  '                }',
+  '            }',
+  '        }',
+  '',
+  '        // Override updateDOM to track changes',
+  '        const originalUpdateDOM = updateDOM;',
+  '        updateDOM = function(data) {',
+  '            originalUpdateDOM(data);',
+  '            const hasChanged = true; // Assume change for safety; can refine with diff',
+  '            adjustPollingRate(hasChanged);',
+  '        };',
+  '',
+  '        // Start the system',
+  '        if (CONFIG.ENDPOINT) {',
+  '            startPolling();',
+  '        } else {',
+  '            console.error(\'RASPS: ENDPOINT not configured - polling disabled\');',
+  '        }',
+  '',
+  '        // Export controls for debugging',
+  '        window.RASPS = {',
+  '            start: startPolling,',
+  '            stop: stopPolling,',
+  '            config: CONFIG',
+  '        };',
+  '    })();',
   '  </script>',
   '</body>',
   '</html>'
