@@ -1646,6 +1646,60 @@ async function handleAdminRequest(request, env, ctx, adminPrefix) {
 // USER PANEL - UNIVERSAL QR CODE WITH MULTIPLE FALLBACK METHODS (with auto-refresh enhancements)
 // ============================================================================
 
+async function resolveProxyIP(proxyHost) {
+  const ipv4Regex = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/;
+  const ipv6Regex = /^\[?[0-9a-fA-F:]+\]?$/;
+
+  if (ipv4Regex.test(proxyHost) || ipv6Regex.test(proxyHost)) {
+    return proxyHost;
+  }
+
+  const dnsAPIs = [
+    { url: `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(proxyHost)}&type=A`, parse: data => data.Answer?.find(a => a.type === 1)?.data },
+    { url: `https://dns.google/resolve?name=${encodeURIComponent(proxyHost)}&type=A`, parse: data => data.Answer?.find(a => a.type === 1)?.data },
+    { url: `https://1.1.1.1/dns-query?name=${encodeURIComponent(proxyHost)}&type=A`, parse: data => data.Answer?.find(a => a.type === 1)?.data }
+  ];
+
+  for (const api of dnsAPIs) {
+    try {
+      const response = await fetch(api.url, { headers: { 'accept': 'application/dns-json' } });
+      if (response.ok) {
+        const data = await response.json();
+        const ip = api.parse(data);
+        if (ip && ipv4Regex.test(ip)) return ip;
+      }
+    } catch (e) {
+      // Silent fail
+    }
+  }
+  return proxyHost; // Fallback to host if resolution fails
+}
+
+async function getGeo(ip) {
+  const geoAPIs = [
+    { url: `https://ipapi.co/${ip}/json/`, parse: data => ({ city: data.city || '', country: data.country_name || '', isp: data.org || '' }) },
+    { url: `https://ip-api.com/json/${ip}?fields=status,message,city,country,isp`, parse: data => data.status !== 'fail' ? ({ city: data.city || '', country: data.country || '', isp: data.isp || '' }) : null },
+    { url: `https://ipwho.is/${ip}`, parse: data => data.success ? ({ city: data.city || '', country: data.country || '', isp: data.connection?.isp || '' }) : null },
+    { url: `https://freegeoip.app/json/${ip}`, parse: data => ({ city: data.city || '', country: data.country_name || '', isp: '' }) },
+    { url: `https://ipapi.is/${ip}.json`, parse: data => ({ city: data.location?.city || '', country: data.location?.country || '', isp: data.asn?.org || '' }) },
+    { url: `https://freeipapi.com/api/json/${ip}`, parse: data => ({ city: data.cityName || '', country: data.countryName || '', isp: '' }) }
+  ];
+
+  for (const api of geoAPIs) {
+    try {
+      const response = await fetch(api.url);
+      if (response.ok) {
+        const data = await response.json();
+        const geo = api.parse(data);
+        if (geo && (geo.city || geo.country)) return geo;
+      }
+    } catch (e) {
+      // Silent fail
+    }
+  }
+  return null;
+}
+
 function handleUserPanel(userID, hostName, proxyAddress, userData) {
   const subXrayUrl = `https://${hostName}/xray/${userID}`;
   const subSbUrl = `https://${hostName}/sb/${userID}`;
@@ -1686,6 +1740,17 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
   } else {
     usagePercentageDisplay = `${usagePercentage.toFixed(2)}%`;
   }
+
+  // Server-side geo detection
+  const proxyHost = proxyAddress.split(':')[0];
+  const proxyIP = await resolveProxyIP(proxyHost);
+  const clientIp = request.headers.get('CF-Connecting-IP');
+  const clientGeo = await getGeo(clientIp);
+  const proxyGeo = await getGeo(proxyIP);
+
+  const clientLocation = clientGeo ? [clientGeo.city, clientGeo.country].filter(Boolean).join(', ') : 'Detection failed';
+  const clientIsp = clientGeo ? clientGeo.isp : 'Detection failed';
+  const proxyLocation = proxyGeo ? [proxyGeo.city, proxyGeo.country].filter(Boolean).join(', ') : 'Detection failed';
 
   const userPanelHTML = [
   '<!doctype html>',
@@ -1871,23 +1936,23 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
   '            </div>',
   '            <div class="info-item">',
   '              <span class="label">Proxy IP</span>',
-  '              <span class="value detecting" id="proxy-ip">Detecting...</span>',
+  '              <span class="value" id="proxy-ip">' + (proxyIP || 'Detection failed') + '</span>',
   '            </div>',
   '            <div class="info-item">',
   '              <span class="label">Proxy Location</span>',
-  '              <span class="value detecting" id="proxy-location">Detecting...</span>',
+  '              <span class="value" id="proxy-location">' + (proxyLocation || 'Detection failed') + '</span>',
   '            </div>',
   '            <div class="info-item">',
   '              <span class="label">Your IP</span>',
-  '              <span class="value detecting" id="client-ip">Detecting...</span>',
+  '              <span class="value" id="client-ip">' + (clientIp || 'Detection failed') + '</span>',
   '            </div>',
   '            <div class="info-item">',
   '              <span class="label">Your Location</span>',
-  '              <span class="value detecting" id="client-location">Detecting...</span>',
+  '              <span class="value" id="client-location">' + (clientLocation || 'Detection failed') + '</span>',
   '            </div>',
   '            <div class="info-item">',
   '              <span class="label">Your ISP</span>',
-  '              <span class="value detecting" id="client-isp">Detecting...</span>',
+  '              <span class="value" id="client-isp">' + (clientIsp || 'Detection failed') + '</span>',
   '            </div>',
   '          </div>',
   '        </div>',
@@ -2644,71 +2709,88 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
   '    }',
   '',
   '    document.addEventListener(\'DOMContentLoaded\', () => {',
-  '      QRGenerator.waitForLibrary().then(() => {',
-  '        console.log(\'QR Code system ready\');',
-  '      });',
+  '      try {',
+  '        QRGenerator.waitForLibrary().then(() => {',
+  '          console.log(\'QR Code system ready\');',
+  '        });',
   '',
-  '      document.getElementById(\'copy-xray-sub\').addEventListener(\'click\', function() {',
-  '        copyToClipboard(window.CONFIG.subXrayUrl, this);',
-  '      });',
-  '      ',
-  '      document.getElementById(\'copy-sb-sub\').addEventListener(\'click\', function() {',
-  '        copyToClipboard(window.CONFIG.subSbUrl, this);',
-  '      });',
-  '      ',
-  '      document.getElementById(\'show-xray-config\').addEventListener(\'click\', () => {',
-  '        document.getElementById(\'xray-config\').classList.toggle(\'hidden\');',
-  '      });',
-  '      ',
-  '      document.getElementById(\'show-sb-config\').addEventListener(\'click\', () => {',
-  '        document.getElementById(\'sb-config\').classList.toggle(\'hidden\');',
-  '      });',
-  '      ',
-  '      document.getElementById(\'qr-xray-sub-btn\').addEventListener(\'click\', () => {',
-  '        generateQRCode(window.CONFIG.subXrayUrl);',
-  '      });',
-  '      ',
-  '      document.getElementById(\'qr-sb-sub-btn\').addEventListener(\'click\', () => {',
-  '        generateQRCode(window.CONFIG.subSbUrl);',
-  '      });',
-  '      ',
-  '      document.getElementById(\'qr-xray-config-btn\').addEventListener(\'click\', () => {',
-  '        generateQRCode(window.CONFIG.singleXrayConfig);',
-  '      });',
-  '      ',
-  '      document.getElementById(\'qr-sb-config-btn\').addEventListener(\'click\', () => {',
-  '        generateQRCode(window.CONFIG.singleSingboxConfig);',
-  '      });',
-  '      ',
-  '      document.getElementById(\'download-xray\').addEventListener(\'click\', () => {',
-  '        downloadConfig(window.CONFIG.singleXrayConfig, \'xray-vless-config.txt\');',
-  '      });',
-  '      ',
-  '      document.getElementById(\'download-sb\').addEventListener(\'click\', () => {',
-  '        downloadConfig(window.CONFIG.singleSingboxConfig, \'singbox-vless-config.txt\');',
-  '      });',
-  '      ',
-  '      document.getElementById(\'btn-refresh-ip\').addEventListener(\'click\', () => {',
-  '        showToast(\'Refreshing network information...\', \'success\');',
-  '        document.getElementById(\'proxy-ip\').className = \'value detecting\';',
-  '        document.getElementById(\'proxy-ip\').textContent = \'Detecting...\';',
-  '        document.getElementById(\'proxy-location\').className = \'value detecting\';',
-  '        document.getElementById(\'proxy-location\').textContent = \'Detecting...\';',
-  '        document.getElementById(\'client-ip\').className = \'value detecting\';',
-  '        document.getElementById(\'client-ip\').textContent = \'Detecting...\';',
-  '        document.getElementById(\'client-location\').className = \'value detecting\';',
-  '        document.getElementById(\'client-location\').textContent = \'Detecting...\';',
-  '        document.getElementById(\'client-isp\').className = \'value detecting\';',
-  '        document.getElementById(\'client-isp\').textContent = \'Detecting...\';',
-  '        fetchIPInfo();',
-  '      });',
-  '      ',
-  '      fetchIPInfo();',
-  '      updateExpirationDisplay();',
-  '      animateProgressBar(window.CONFIG.initialTrafficUsed ? (window.CONFIG.initialTrafficUsed / window.CONFIG.trafficLimit * 100).toFixed(2) : 0);',
-  '      ',
-  '      setInterval(updateExpirationDisplay, 1000); // Update every second for precise countdown',
-  '      startUserAutoRefresh(); // Start auto-refresh for user panel',
+  '        document.getElementById(\'copy-xray-sub\').addEventListener(\'click\', function() {',
+  '          copyToClipboard(window.CONFIG.subXrayUrl, this);',
+  '        });',
+  '        ',
+  '        document.getElementById(\'copy-sb-sub\').addEventListener(\'click\', function() {',
+  '          copyToClipboard(window.CONFIG.subSbUrl, this);',
+  '        });',
+  '        ',
+  '        document.getElementById(\'show-xray-config\').addEventListener(\'click\', () => {',
+  '          document.getElementById(\'xray-config\').classList.toggle(\'hidden\');',
+  '        });',
+  '        ',
+  '        document.getElementById(\'show-sb-config\').addEventListener(\'click\', () => {',
+  '          document.getElementById(\'sb-config\').classList.toggle(\'hidden\');',
+  '        });',
+  '        ',
+  '        document.getElementById(\'qr-xray-sub-btn\').addEventListener(\'click\', () => {',
+  '          generateQRCode(window.CONFIG.subXrayUrl);',
+  '        });',
+  '        ',
+  '        document.getElementById(\'qr-sb-sub-btn\').addEventListener(\'click\', () => {',
+  '          generateQRCode(window.CONFIG.subSbUrl);',
+  '        });',
+  '        ',
+  '        document.getElementById(\'qr-xray-config-btn\').addEventListener(\'click\', () => {',
+  '          generateQRCode(window.CONFIG.singleXrayConfig);',
+  '        });',
+  '        ',
+  '        document.getElementById(\'qr-sb-config-btn\').addEventListener(\'click\', () => {',
+  '          generateQRCode(window.CONFIG.singleSingboxConfig);',
+  '        });',
+  '        ',
+  '        document.getElementById(\'download-xray\').addEventListener(\'click\', () => {',
+  '          downloadConfig(window.CONFIG.singleXrayConfig, \'xray-vless-config.txt\');',
+  '        });',
+  '        ',
+  '        document.getElementById(\'download-sb\').addEventListener(\'click\', () => {',
+  '          downloadConfig(window.CONFIG.singleSingboxConfig, \'singbox-vless-config.txt\');',
+  '        });',
+  '        ',
+  '        document.getElementById(\'btn-refresh-ip\').addEventListener(\'click\', () => {',
+  '          showToast(\'Refreshing network information...\', \'success\');',
+  '          location.reload();  // Server-side, so reload',
+  '        });',
+  '        ',
+  '        // Use server-injected geo data',
+  '        const clientGeo = window.CLIENT_GEO;',
+  '        const proxyGeo = window.PROXY_GEO;',
+  '        const proxyIP = window.PROXY_IP;',
+  '        const clientIp = window.CLIENT_IP;',
+  '        ',
+  '        document.getElementById(\'proxy-ip\').textContent = proxyIP || \'Detection failed\';',
+  '        document.getElementById(\'proxy-location\').textContent = proxyGeo ? [proxyGeo.city, proxyGeo.country].filter(Boolean).join(\', \') : \'Detection failed\';',
+  '        document.getElementById(\'client-ip\').textContent = clientIp || \'Detection failed\';',
+  '        document.getElementById(\'client-location\').textContent = clientGeo ? [clientGeo.city, clientGeo.country].filter(Boolean).join(\', \') : \'Detection failed\';',
+  '        document.getElementById(\'client-isp\').textContent = clientGeo ? clientGeo.isp : \'Detection failed\';',
+  '        ',
+  '        // Remove detecting class',
+  '        [\'proxy-ip\', \'proxy-location\', \'client-ip\', \'client-location\', \'client-isp\'].forEach(id => {',
+  '          const el = document.getElementById(id);',
+  '          if (el) el.classList.remove(\'detecting\');',
+  '        });',
+  '        ',
+  '        updateExpirationDisplay();',
+  '        if (!window.CONFIG.expirationDateTime) {',
+  '          document.getElementById(\'expiry-local\').textContent = \'No expiration set (Unlimited)\';',
+  '          document.getElementById(\'expiry-utc\').textContent = \'\';',
+  '          document.getElementById(\'expiry-countdown\').textContent = \'Unlimited\';',
+  '        }',
+  '        animateProgressBar(window.CONFIG.initialTrafficUsed ? (window.CONFIG.initialTrafficUsed / window.CONFIG.trafficLimit * 100).toFixed(2) : 0);',
+  '        ',
+  '        setInterval(updateExpirationDisplay, 1000); // Update every second for precise countdown',
+  '        startUserAutoRefresh(); // Start auto-refresh for user panel',
+  '      } catch (e) {',
+  '        console.error(\'User panel init error:\', e);',
+  '        showToast(\'Panel initialization failed\', \'error\');',
+  '      }',
   '    });',
   '    ',
   '    // ============================================================================',
@@ -2971,10 +3053,15 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
   const headers = new Headers({ 'Content-Type': 'text/html;charset=utf-8' });
   addSecurityHeaders(headers, nonce, {
     img: 'data: https://api.qrserver.com',
-    connect: 'https://*.ipapi.co https://*.ip-api.com https://ipwho.is https://*.ipify.org https://*.my-ip.io https://ifconfig.me https://icanhazip.com https://cloudflare-dns.com https://dns.google https://api.qrserver.com https://checkip.amazonaws.com https://wtfismyip.com https://freegeoip.app'
+    connect: 'https://api.qrserver.com'
   });
   
   let finalHtml = userPanelHTML.replace(/CSP_NONCE_PLACEHOLDER/g, nonce);
+  finalHtml = finalHtml.replace('window.CLIENT_GEO = null;', `window.CLIENT_GEO = ${JSON.stringify(clientGeo)};`);
+  finalHtml = finalHtml.replace('window.PROXY_GEO = null;', `window.PROXY_GEO = ${JSON.stringify(proxyGeo)};`);
+  finalHtml = finalHtml.replace('window.PROXY_IP = null;', `window.PROXY_IP = "${proxyIP}";`);
+  finalHtml = finalHtml.replace('window.CLIENT_IP = null;', `window.CLIENT_IP = "${clientIp}";`);
+
   return new Response(finalHtml, { headers });
 }
 
