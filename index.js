@@ -1367,7 +1367,7 @@ async function handleAdminRequest(request, env, ctx, adminPrefix) {
   const adminSubPath = url.pathname.substring(adminBasePath.length) || '/';
 
   if (adminSubPath.startsWith('/api/')) {
-    if (!(await isAdmin(request, env))) {
+    if (!(await isAdmin(request, env)) {
       const headers = new Headers(jsonHeader);
       addSecurityHeaders(headers, null, {});
       return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers });
@@ -2305,7 +2305,7 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
   '            textArea.select();',
   '            document.execCommand(\'copy\');',
   '            document.body.removeChild(textArea);',
-  '',
+  '            ',
   '            const originalText = button.innerHTML;',
   '            button.innerHTML = \'✓ Copied!\';',
   '            button.disabled = true;',
@@ -2694,7 +2694,7 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
   '            usagePercentageDisplay = usagePercentage.toFixed(2) + \'%\';',
   '          }',
   '',
-  '          const progressFill = document.querySelector(\'.progress-fill\');',
+  '          const progressFill = document.getElementById(\'progress-bar-fill\');',
   '          if (progressFill) {',
   '            progressFill.dataset.targetWidth = usagePercentage.toFixed(2);',
   '            progressFill.className = \'progress-fill \' + (usagePercentage > 80 ? \'high\' : usagePercentage > 50 ? \'medium\' : \'low\');',
@@ -2729,12 +2729,12 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
   '          console.log(\'QR Code system ready\');',
   '        });',
   '',
-  '        document.getElementById(\'copy-xray-sub\').addEventListener(\'click\', function() {',
-  '          copyToClipboard(window.CONFIG.subXrayUrl, this);',
+  '        document.getElementById(\'copy-xray-sub\').addEventListener(\'click\', async function() {',
+  '          await copyToClipboard(window.CONFIG.subXrayUrl, this);',
   '        });',
   '        ',
-  '        document.getElementById(\'copy-sb-sub\').addEventListener(\'click\', function() {',
-  '          copyToClipboard(window.CONFIG.subSbUrl, this);',
+  '        document.getElementById(\'copy-sb-sub\').addEventListener(\'click\', async function() {',
+  '          await copyToClipboard(window.CONFIG.subSbUrl, this);',
   '        });',
   '        ',
   '        document.getElementById(\'show-xray-config\').addEventListener(\'click\', () => {',
@@ -2817,7 +2817,6 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
   '            ENDPOINT: \'/api/user/\' + window.CONFIG.uuid,',
   '            POLL_MIN_MS: 50000, // Adjusted base to ~1min with jitter',
   '            POLL_MAX_MS: 70000,',
-  '            INACTIVE_MULTIPLIER: 4,',
   '            INACTIVE_MULTIPLIER: 4,',
   '            MAX_BACKOFF_MS: 300000,',
   '            INITIAL_BACKOFF_MS: 2000,',
@@ -2902,7 +2901,7 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
   '                    usageText.textContent = formatBytes(data.usedMB) + \' of \' + formatBytes(data.limitMB) + \' used\';',
   '                }',
   '            }',
-  '            if (data.expires) {',
+  '            if (timeEl && data.expires) {',
   '                window.CONFIG.expirationDateTime = data.expires;',
   '                updateExpirationDisplay();',
   '            }',
@@ -3017,6 +3016,7 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
   '            document.removeEventListener(\'visibilitychange\', handleVisibilityChange);',
   '        }',
   '',
+  '        // Advanced features: Idle detection and adaptive rate based on change frequency',
   '        let changeFrequency = 0;',
   '        let lastChangeTime = Date.now();',
   '        function adjustPollingRate(hasChanged) {',
@@ -3037,6 +3037,7 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
   '            }',
   '        }',
   '',
+  '        // Override updateDOM to track changes',
   '        const originalUpdateDOM = updateDOM;',
   '        updateDOM = function(data) {',
   '            originalUpdateDOM(data);',
@@ -3145,8 +3146,6 @@ async function ProtocolOverWSHandler(request, config, env, ctx) {
             writer.releaseLock();
             return;
           }
-
-          remoteSocketWrapper = { value: null };
 
           const {
             user,
