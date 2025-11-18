@@ -14,7 +14,7 @@ import { connect } from 'cloudflare:sockets';
 // CONFIGURATION
 // ============================================================================
 
-var Config = {
+const Config = {
   userID: 'd342d11e-d424-4583-b36e-524ab1f0afa4',
   proxyIPs: ['nima.nscl.ir:443', 'bpb.yousef.isegaro.com:443'],
   scamalytics: {
@@ -28,32 +28,32 @@ var Config = {
     address: '',
   },
   
-  fromEnv: function(env) {
-    var selectedProxyIP = null;
+  async fromEnv(env) {
+    let selectedProxyIP = null;
 
     if (env.D1) {
       try {
-        var results = env.D1.prepare("SELECT ip FROM proxy_scans WHERE is_current_best = 1 LIMIT 1").all();
-        selectedProxyIP = results[0] ? results[0].ip : null;
+        const { results } = await env.D1.prepare("SELECT ip FROM proxy_scans WHERE is_current_best = 1 LIMIT 1").all();
+        selectedProxyIP = results[0]?.ip || null;
         if (selectedProxyIP) {
-          console.log("Using proxy IP from D1: " + selectedProxyIP);
+          console.log(`Using proxy IP from D1: ${selectedProxyIP}`);
         }
       } catch (e) {
-        console.error("Failed to read from D1: " + e.message);
+        console.error(`Failed to read from D1: ${e.message}`);
       }
     }
 
     if (!selectedProxyIP) {
       selectedProxyIP = env.PROXYIP;
       if (selectedProxyIP) {
-        console.log("Using proxy IP from env.PROXYIP: " + selectedProxyIP);
+        console.log(`Using proxy IP from env.PROXYIP: ${selectedProxyIP}`);
       }
     }
     
     if (!selectedProxyIP) {
       selectedProxyIP = this.proxyIPs[Math.floor(Math.random() * this.proxyIPs.length)];
       if (selectedProxyIP) {
-        console.log("Using proxy IP from hardcoded list: " + selectedProxyIP);
+        console.log(`Using proxy IP from hardcoded list: ${selectedProxyIP}`);
       }
     }
     
@@ -62,9 +62,7 @@ var Config = {
         selectedProxyIP = this.proxyIPs[0]; 
     }
     
-    var proxyParts = selectedProxyIP.split(':');
-    var proxyHost = proxyParts[0];
-    var proxyPort = proxyParts[1] || '443';
+    const [proxyHost, proxyPort = '443'] = selectedProxyIP.split(':');
     
     return {
       userID: env.UUID || this.userID,
@@ -82,10 +80,10 @@ var Config = {
         address: env.SOCKS5 || this.socks5.address,
       },
     };
-  }
+  },
 };
 
-var CONST = {
+const CONST = {
   ED_PARAMS: { ed: 2560, eh: 'Sec-WebSocket-Protocol' },
   VLESS_PROTOCOL: 'vless',
   WS_READY_STATE_OPEN: 1,
@@ -104,23 +102,22 @@ var CONST = {
 // ============================================================================
 
 function generateNonce() {
-  var arr = new Uint8Array(16);
+  const arr = new Uint8Array(16);
   crypto.getRandomValues(arr);
   return btoa(String.fromCharCode.apply(null, arr));
 }
 
-function addSecurityHeaders(headers, nonce, cspDomains) {
-  cspDomains = cspDomains || {};
-  var csp = [
+function addSecurityHeaders(headers, nonce, cspDomains = {}) {
+  const csp = [
     "default-src 'self'",
     "form-action 'self'",
     "object-src 'none'",
     "frame-ancestors 'none'",
     "base-uri 'self'",
-    nonce ? "script-src 'nonce-" + nonce + "' https://cdnjs.cloudflare.com https://unpkg.com 'unsafe-inline'" : "script-src 'self' https://cdnjs.cloudflare.com https://unpkg.com 'unsafe-inline'",
-    nonce ? "style-src 'nonce-" + nonce + "' 'unsafe-inline' 'unsafe-hashes'" : "style-src 'self' 'unsafe-inline' 'unsafe-hashes'",
-    "img-src 'self' data: https: blob: " + (cspDomains.img || '').trim(),
-    "connect-src 'self' https: " + (cspDomains.connect || '').trim(),
+    nonce ? `script-src 'nonce-${nonce}' https://cdnjs.cloudflare.com https://unpkg.com 'unsafe-inline'` : "script-src 'self' https://cdnjs.cloudflare.com https://unpkg.com 'unsafe-inline'",
+    nonce ? `style-src 'nonce-${nonce}' 'unsafe-inline' 'unsafe-hashes'` : "style-src 'self' 'unsafe-inline' 'unsafe-hashes'",
+    `img-src 'self' data: https: blob: ${cspDomains.img || ''}`.trim(),
+    `connect-src 'self' https: ${cspDomains.connect || ''}`.trim(),
   ];
 
   headers.set('Content-Security-Policy', csp.join('; '));
@@ -140,18 +137,18 @@ function timingSafeEqual(a, b) {
     return false;
   }
 
-  var aLen = a.length;
-  var bLen = b.length;
-  var result = 0;
+  const aLen = a.length;
+  const bLen = b.length;
+  let result = 0;
 
   if (aLen !== bLen) {
-    for (var i = 0; i < aLen; i++) {
+    for (let i = 0; i < aLen; i++) {
       result |= a.charCodeAt(i) ^ a.charCodeAt(i);
     }
     return false;
   }
   
-  for (var i = 0; i < aLen; i++) {
+  for (let i = 0; i < aLen; i++) {
     result |= a.charCodeAt(i) ^ b.charCodeAt(i);
   }
   
@@ -160,15 +157,13 @@ function timingSafeEqual(a, b) {
 
 function escapeHTML(str) {
   if (typeof str !== 'string') return '';
-  return str.replace(/[&<>"']/g, function(m) {
-    return {
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      '"': '&quot;',
-      "'": '&#39;'
-    }[m];
-  });
+  return str.replace(/[&<>"']/g, m => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  })[m]);
 }
 
 function generateUUID() {
@@ -177,161 +172,187 @@ function generateUUID() {
 
 function isValidUUID(uuid) {
   if (typeof uuid !== 'string') return false;
-  var uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   return uuidRegex.test(uuid);
 }
 
 function isExpired(expDate, expTime) {
   if (!expDate || !expTime) return true;
-  var expTimeSeconds = expTime.includes(':') && expTime.split(':').length === 2 ? expTime + ':00' : expTime;
-  var cleanTime = expTimeSeconds.split('.')[0];
-  var expDatetimeUTC = new Date(expDate + 'T' + cleanTime + 'Z');
+  const expTimeSeconds = expTime.includes(':') && expTime.split(':').length === 2 ? `${expTime}:00` : expTime;
+  const cleanTime = expTimeSeconds.split('.')[0];
+  const expDatetimeUTC = new Date(`${expDate}T${cleanTime}Z`);
   return expDatetimeUTC <= new Date() || isNaN(expDatetimeUTC.getTime());
 }
 
 function formatBytes(bytes) {
   if (bytes === 0) return '0 Bytes';
-  var k = 1024;
-  var sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-  var i = Math.floor(Math.log(bytes) / Math.log(k));
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
-function kvGet(db, key, type) {
-  type = type || 'text';
-  var stmt = db.prepare("SELECT value, expiration FROM key_value WHERE key = ?").bind(key);
-  var res = stmt.first();
-  
-  if (!res) return null;
-  
-  if (res.expiration && res.expiration < Math.floor(Date.now() / 1000)) {
-    db.prepare("DELETE FROM key_value WHERE key = ?").bind(key).run();
-    return null;
-  }
-  
-  if (type === 'json') {
-    try {
-      return JSON.parse(res.value);
-    } catch (e) {
-      console.error("Failed to parse JSON for key " + key + ": " + e);
+async function kvGet(db, key, type = 'text') {
+  try {
+    const stmt = db.prepare("SELECT value, expiration FROM key_value WHERE key = ?").bind(key);
+    const res = await stmt.first();
+    
+    if (!res) return null;
+    
+    if (res.expiration && res.expiration < Math.floor(Date.now() / 1000)) {
+      await db.prepare("DELETE FROM key_value WHERE key = ?").bind(key).run();
       return null;
     }
+    
+    if (type === 'json') {
+      try {
+        return JSON.parse(res.value);
+      } catch (e) {
+        console.error(`Failed to parse JSON for key ${key}: ${e}`);
+        return null;
+      }
+    }
+    
+    return res.value;
+  } catch (e) {
+    console.error(`kvGet error for ${key}: ${e}`);
+    return null;
   }
-  
-  return res.value;
 }
 
-function kvPut(db, key, value, options) {
-  options = options || {};
-  if (typeof value === 'object') {
-    value = JSON.stringify(value);
+async function kvPut(db, key, value, options = {}) {
+  try {
+    if (typeof value === 'object') {
+      value = JSON.stringify(value);
+    }
+    
+    const exp = options.expirationTtl 
+      ? Math.floor(Date.now() / 1000 + options.expirationTtl) 
+      : null;
+    
+    await db.prepare(
+      "INSERT OR REPLACE INTO key_value (key, value, expiration) VALUES (?, ?, ?)"
+    ).bind(key, value, exp).run();
+  } catch (e) {
+    console.error(`kvPut error for ${key}: ${e}`);
   }
-  
-  var exp = options.expirationTtl 
-    ? Math.floor(Date.now() / 1000 + options.expirationTtl) 
-    : null;
-  
-  db.prepare(
-    "INSERT OR REPLACE INTO key_value (key, value, expiration) VALUES (?, ?, ?)"
-  ).bind(key, value, exp).run();
 }
 
-function kvDelete(db, key) {
-  db.prepare("DELETE FROM key_value WHERE key = ?").bind(key).run();
+async function kvDelete(db, key) {
+  try {
+    await db.prepare("DELETE FROM key_value WHERE key = ?").bind(key).run();
+  } catch (e) {
+    console.error(`kvDelete error for ${key}: ${e}`);
+  }
 }
 
-function getUserData(env, uuid, ctx) {
+async function getUserData(env, uuid, ctx) {
   if (!isValidUUID(uuid)) return null;
   if (!env.DB) {
     console.error("D1 binding missing");
     return null;
   }
   
-  var cacheKey = "user:" + uuid;
+  const cacheKey = `user:${uuid}`;
   
-  var cachedData = kvGet(env.DB, cacheKey, 'json');
-  if (cachedData && cachedData.uuid) return cachedData;
+  try {
+    const cachedData = await kvGet(env.DB, cacheKey, 'json');
+    if (cachedData && cachedData.uuid) return cachedData;
+  } catch (e) {
+    console.error(`Failed to get cached data for ${uuid}`, e);
+  }
 
-  var userFromDb = env.DB.prepare("SELECT * FROM users WHERE uuid = ?").bind(uuid).first();
+  const userFromDb = await env.DB.prepare("SELECT * FROM users WHERE uuid = ?").bind(uuid).first();
   if (!userFromDb) return null;
   
-  var cachePromise = kvPut(env.DB, cacheKey, userFromDb, { expirationTtl: 3600 });
+  const cachePromise = kvPut(env.DB, cacheKey, userFromDb, { expirationTtl: 3600 });
   
   if (ctx) {
     ctx.waitUntil(cachePromise);
   } else {
-    cachePromise;
+    await cachePromise;
   }
   
   return userFromDb;
 }
 
-function updateUsage(env, uuid, bytes, ctx) {
+async function updateUsage(env, uuid, bytes, ctx) {
   if (bytes <= 0 || !uuid) return;
   
-  var usageLockKey = "usage_lock:" + uuid;
-  var lockAcquired = false;
+  const usageLockKey = `usage_lock:${uuid}`;
+  let lockAcquired = false;
   
-  while (!lockAcquired) {
-    var existingLock = kvGet(env.DB, usageLockKey);
-    if (!existingLock) {
-      kvPut(env.DB, usageLockKey, 'locked', { expirationTtl: 5 }); // 5s lock
-      lockAcquired = true;
-    } else {
-      new Promise(function(resolve) { setTimeout(resolve, 100); }); // Backoff
+  try {
+    // Acquire lock
+    while (!lockAcquired) {
+      const existingLock = await kvGet(env.DB, usageLockKey);
+      if (!existingLock) {
+        await kvPut(env.DB, usageLockKey, 'locked', { expirationTtl: 5 }); // 5s lock
+        lockAcquired = true;
+      } else {
+        await new Promise(resolve => setTimeout(resolve, 100)); // Backoff
+      }
     }
-  }
-  
-  var usage = Math.round(bytes);
-  var updatePromise = env.DB.prepare("UPDATE users SET traffic_used = traffic_used + ? WHERE uuid = ?")
-    .bind(usage, uuid)
-    .run();
-  
-  var deleteCachePromise = kvDelete(env.DB, "user:" + uuid);
-  
-  if (ctx) {
-    ctx.waitUntil(Promise.all([updatePromise, deleteCachePromise]));
-  } else {
-    Promise.all([updatePromise, deleteCachePromise]);
-  }
-  
-  if (lockAcquired) {
-    kvDelete(env.DB, usageLockKey);
+    
+    const usage = Math.round(bytes);
+    const updatePromise = env.DB.prepare("UPDATE users SET traffic_used = traffic_used + ? WHERE uuid = ?")
+      .bind(usage, uuid)
+      .run();
+    
+    const deleteCachePromise = kvDelete(env.DB, `user:${uuid}`);
+    
+    if (ctx) {
+      ctx.waitUntil(Promise.all([updatePromise, deleteCachePromise]));
+    } else {
+      await Promise.all([updatePromise, deleteCachePromise]);
+    }
+  } catch (err) {
+    console.error(`Failed to update usage for ${uuid}:`, err);
+  } finally {
+    if (lockAcquired) {
+      await kvDelete(env.DB, usageLockKey);
+    }
   }
 }
 
-function cleanupOldIps(env, ctx) {
-  var cleanupPromise = env.DB.prepare(
+async function cleanupOldIps(env, ctx) {
+  const cleanupPromise = env.DB.prepare(
     "DELETE FROM user_ips WHERE last_seen < datetime('now', ?)"
-  ).bind("-" + CONST.IP_CLEANUP_AGE_DAYS + " days").run();
+  ).bind(`-${CONST.IP_CLEANUP_AGE_DAYS} days`).run();
   
   if (ctx) {
     ctx.waitUntil(cleanupPromise);
   } else {
-    cleanupPromise;
+    await cleanupPromise;
   }
 }
 
-function isSuspiciousIP(ip, scamalyticsConfig, threshold) {
-  threshold = threshold || CONST.SCAMALYTICS_THRESHOLD;
+async function isSuspiciousIP(ip, scamalyticsConfig, threshold = CONST.SCAMALYTICS_THRESHOLD) {
   if (!scamalyticsConfig.username || !scamalyticsConfig.apiKey) {
-    console.warn("⚠️  Scamalytics API credentials not configured. IP " + ip + " allowed by default (fail-open mode). Set SCAMALYTICS_USERNAME and SCAMALYTICS_API_KEY for protection.");
+    console.warn(`⚠️  Scamalytics API credentials not configured. IP ${ip} allowed by default (fail-open mode). Set SCAMALYTICS_USERNAME and SCAMALYTICS_API_KEY for protection.`);
     return false;
   }
 
-  var controller = new AbortController();
-  var timeoutId = setTimeout(function() { controller.abort(); }, 5000);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
 
   try {
-    var url = scamalyticsConfig.baseUrl + "score?username=" + scamalyticsConfig.username + "&ip=" + ip + "&key=" + scamalyticsConfig.apiKey;
-    var response = fetch(url, { signal: controller.signal });
+    const url = `${scamalyticsConfig.baseUrl}score?username=${scamalyticsConfig.username}&ip=${ip}&key=${scamalyticsConfig.apiKey}`;
+    const response = await fetch(url, { signal: controller.signal });
     if (!response.ok) {
-      console.warn("Scamalytics API returned " + response.status + " for " + ip + ". Allowing (fail-open).");
+      console.warn(`Scamalytics API returned ${response.status} for ${ip}. Allowing (fail-open).`);
       return false;
     }
 
-    var data = response.json();
+    const data = await response.json();
     return data.score >= threshold;
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      console.warn(`Scamalytics timeout for ${ip}. Allowing (fail-open).`);
+    } else {
+      console.error(`Scamalytics error for ${ip}: ${e.message}. Allowing (fail-open).`);
+    }
+    return false;
   } finally {
     clearTimeout(timeoutId);
   }
@@ -342,17 +363,17 @@ function isSuspiciousIP(ip, scamalyticsConfig, threshold) {
 // ============================================================================
 
 function base32ToBuffer(base32) {
-  var base32Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-  var str = base32.toUpperCase().replace(/=+$/, '');
+  const base32Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  const str = base32.toUpperCase().replace(/=+$/, '');
   
-  var bits = 0;
-  var value = 0;
-  var index = 0;
-  var output = new Uint8Array(Math.floor(str.length * 5 / 8));
+  let bits = 0;
+  let value = 0;
+  let index = 0;
+  const output = new Uint8Array(Math.floor(str.length * 5 / 8));
   
-  for (var i = 0; i < str.length; i++) {
-    var char = str[i];
-    var charValue = base32Chars.indexOf(char);
+  for (let i = 0; i < str.length; i++) {
+    const char = str[i];
+    const charValue = base32Chars.indexOf(char);
     if (charValue === -1) throw new Error('Invalid Base32 character');
     
     value = (value << 5) | charValue;
@@ -366,12 +387,12 @@ function base32ToBuffer(base32) {
   return output.buffer;
 }
 
-function generateHOTP(secretBuffer, counter) {
-  var counterBuffer = new ArrayBuffer(8);
-  var counterView = new DataView(counterBuffer);
+async function generateHOTP(secretBuffer, counter) {
+  const counterBuffer = new ArrayBuffer(8);
+  const counterView = new DataView(counterBuffer);
   counterView.setBigUint64(0, BigInt(counter), false);
   
-  var key = crypto.subtle.importKey(
+  const key = await crypto.subtle.importKey(
     'raw',
     secretBuffer,
     { name: 'HMAC', hash: 'SHA-1' },
@@ -379,27 +400,27 @@ function generateHOTP(secretBuffer, counter) {
     ['sign']
   );
   
-  var hmac = crypto.subtle.sign('HMAC', key, counterBuffer);
-  var hmacBuffer = new Uint8Array(hmac);
+  const hmac = await crypto.subtle.sign('HMAC', key, counterBuffer);
+  const hmacBuffer = new Uint8Array(hmac);
   
-  var offset = hmacBuffer[hmacBuffer.length - 1] & 0x0F;
-  var binary = 
+  const offset = hmacBuffer[hmacBuffer.length - 1] & 0x0F;
+  const binary = 
     ((hmacBuffer[offset] & 0x7F) << 24) |
     ((hmacBuffer[offset + 1] & 0xFF) << 16) |
     ((hmacBuffer[offset + 2] & 0xFF) << 8) |
     (hmacBuffer[offset + 3] & 0xFF);
     
-  var otp = binary % 1000000;
+  const otp = binary % 1000000;
   
   return otp.toString().padStart(6, '0');
 }
 
-function validateTOTP(secret, code) {
+async function validateTOTP(secret, code) {
   if (!secret || !code || code.length !== 6 || !/^\d{6}$/.test(code)) {
     return false;
   }
   
-  var secretBuffer;
+  let secretBuffer;
   try {
     secretBuffer = base32ToBuffer(secret);
   } catch (e) {
@@ -407,15 +428,14 @@ function validateTOTP(secret, code) {
     return false;
   }
   
-  var timeStep = 30;
-  var epoch = Math.floor(Date.now() / 1000);
-  var currentCounter = Math.floor(epoch / timeStep);
+  const timeStep = 30;
+  const epoch = Math.floor(Date.now() / 1000);
+  const currentCounter = Math.floor(epoch / timeStep);
   
-  var counters = [currentCounter, currentCounter - 1, currentCounter + 1];
+  const counters = [currentCounter, currentCounter - 1, currentCounter + 1];
 
-  for (var i = 0; i < counters.length; i++) {
-    var counter = counters[i];
-    var generatedCode = generateHOTP(secretBuffer, counter);
+  for (const counter of counters) {
+    const generatedCode = await generateHOTP(secretBuffer, counter);
     if (timingSafeEqual(code, generatedCode)) {
       return true;
     }
@@ -424,19 +444,19 @@ function validateTOTP(secret, code) {
   return false;
 }
 
-function hashSHA256(str) {
-  var encoder = new TextEncoder();
-  var data = encoder.encode(str);
-  var hashBuffer = crypto.subtle.digest('SHA-256', data);
-  var hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(function(b) { return b.toString(16).padStart(2, '0'); }).join('');
+async function hashSHA256(str) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(str);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-function checkRateLimit(db, key, limit, ttl) {
-  var countStr = kvGet(db, key);
-  var count = parseInt(countStr, 10) || 0;
+async function checkRateLimit(db, key, limit, ttl) {
+  const countStr = await kvGet(db, key);
+  const count = parseInt(countStr, 10) || 0;
   if (count >= limit) return true;
-  kvPut(db, key, (count + 1).toString(), { expirationTtl: ttl });
+  await kvPut(db, key, (count + 1).toString(), { expirationTtl: ttl });
   return false;
 }
 
@@ -444,10 +464,9 @@ function checkRateLimit(db, key, limit, ttl) {
 // UUID STRINGIFY
 // ============================================================================
 
-var byteToHex = Array.from({ length: 256 }, function(_, i) { return (i + 0x100).toString(16).slice(1); });
+const byteToHex = Array.from({ length: 256 }, (_, i) => (i + 0x100).toString(16).slice(1));
 
-function unsafeStringify(arr, offset) {
-  offset = offset || 0;
+function unsafeStringify(arr, offset = 0) {
   return (
     byteToHex[arr[offset]] + byteToHex[arr[offset + 1]] + byteToHex[arr[offset + 2]] + byteToHex[arr[offset + 3]] + '-' +
     byteToHex[arr[offset + 4]] + byteToHex[arr[offset + 5]] + '-' +
@@ -458,9 +477,8 @@ function unsafeStringify(arr, offset) {
   ).toLowerCase();
 }
 
-function stringify(arr, offset) {
-  offset = offset || 0;
-  var uuid = unsafeStringify(arr, offset);
+function stringify(arr, offset = 0) {
+  const uuid = unsafeStringify(arr, offset);
   if (!isValidUUID(uuid)) throw new TypeError('Stringified UUID is invalid');
   return uuid;
 }
@@ -469,78 +487,52 @@ function stringify(arr, offset) {
 // SUBSCRIPTION GENERATION
 // ============================================================================
 
-function generateRandomPath(length, query) {
-  length = length || 12;
-  query = query || '';
-  var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  var result = '';
-  for (var i = 0; i < length; i++) {
+function generateRandomPath(length = 12, query = '') {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let result = '';
+  for (let i = 0; i < length; i++) {
     result += chars.charAt(Math.floor(Math.random() * chars.length));
   }
-  return '/' + result + (query ? '?' + query : '');
+  return `/${result}${query ? '?' + query : ''}`;
 }
 
-var CORE_PRESETS = {
+const CORE_PRESETS = {
   xray: {
-    tls: { path: function() { return generateRandomPath(12, 'ed=2048'); }, security: 'tls', fp: 'chrome', alpn: 'http/1.1', extra: {} },
-    tcp: { path: function() { return generateRandomPath(12, 'ed=2048'); }, security: 'none', fp: 'chrome', extra: {} },
+    tls: { path: () => generateRandomPath(12, 'ed=2048'), security: 'tls', fp: 'chrome', alpn: 'http/1.1', extra: {} },
+    tcp: { path: () => generateRandomPath(12, 'ed=2048'), security: 'none', fp: 'chrome', extra: {} },
   },
   sb: {
-    tls: { path: function() { return generateRandomPath(18); }, security: 'tls', fp: 'firefox', alpn: 'h3', extra: CONST.ED_PARAMS },
-    tcp: { path: function() { return generateRandomPath(18); }, security: 'none', fp: 'firefox', extra: CONST.ED_PARAMS },
+    tls: { path: () => generateRandomPath(18), security: 'tls', fp: 'firefox', alpn: 'h3', extra: CONST.ED_PARAMS },
+    tcp: { path: () => generateRandomPath(18), security: 'none', fp: 'firefox', extra: CONST.ED_PARAMS },
   },
 };
 
 function makeName(tag, proto) {
-  return tag + "-" + proto.toUpperCase();
+  return `${tag}-${proto.toUpperCase()}`;
 }
 
-function createVlessLink(options) {
-  var userID = options.userID;
-  var address = options.address;
-  var port = options.port;
-  var host = options.host;
-  var path = options.path;
-  var security = options.security;
-  var sni = options.sni;
-  var fp = options.fp;
-  var alpn = options.alpn;
-  var extra = options.extra || {};
-  var name = options.name;
-
-  var params = new URLSearchParams({ type: 'ws', host: host, path: path });
+function createVlessLink({ userID, address, port, host, path, security, sni, fp, alpn, extra = {}, name }) {
+  const params = new URLSearchParams({ type: 'ws', host, path });
   if (security) params.set('security', security);
   if (sni) params.set('sni', sni);
   if (fp) params.set('fp', fp);
   if (alpn) params.set('alpn', alpn);
-  for (var k in extra) {
-    params.set(k, extra[k]);
-  }
-  return "vless://" + userID + "@" + address + ":" + port + "?" + params.toString() + "#" + encodeURIComponent(name);
+  for (const [k, v] of Object.entries(extra)) params.set(k, v);
+  return `vless://${userID}@${address}:${port}?${params.toString()}#${encodeURIComponent(name)}`;
 }
 
-function buildLink(options) {
-  var core = options.core;
-  var proto = options.proto;
-  var userID = options.userID;
-  var hostName = options.hostName;
-  var address = options.address;
-  var port = options.port;
-  var tag = options.tag;
-
-  var p = CORE_PRESETS[core][proto];
+function buildLink({ core, proto, userID, hostName, address, port, tag }) {
+  const p = CORE_PRESETS[core][proto];
   return createVlessLink({
-    userID: userID, address: address, port: port, host: hostName, path: p.path(), security: p.security,
+    userID, address, port, host: hostName, path: p.path(), security: p.security,
     sni: p.security === 'tls' ? hostName : undefined, fp: p.fp, alpn: p.alpn, extra: p.extra, name: makeName(tag, proto),
   });
 }
 
-function pick(arr) {
-  return arr[Math.floor(Math.random() * arr.length)];
-}
+const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
 async function handleIpSubscription(core, userID, hostName) {
-  var mainDomains = [
+  const mainDomains = [
     hostName, 'creativecommons.org', 'mail.tm',
     'temp-mail.org', 'ipaddress.my', 
     'mdbmax.com', 'check-host.net',
@@ -559,28 +551,28 @@ async function handleIpSubscription(core, userID, hostName) {
     'go.inmobi.com', 'whatismyipaddress.com',
     'cf.090227.xyz', 'cdnjs.com', 'zula.ir',
   ];
-  var httpsPorts = [443, 8443, 2053, 2083, 2087, 2096];
-  var httpPorts = [80, 8080, 8880, 2052, 2082, 2086, 2095];
-  var links = [];
-  var isPagesDeployment = hostName.endsWith('.pages.dev');
+  const httpsPorts = [443, 8443, 2053, 2083, 2087, 2096];
+  const httpPorts = [80, 8080, 8880, 2052, 2082, 2086, 2095];
+  let links = [];
+  const isPagesDeployment = hostName.endsWith('.pages.dev');
 
-  mainDomains.forEach(function(domain, i) {
-    links.push(buildLink({ core: core, proto: 'tls', userID: userID, hostName: hostName, address: domain, port: pick(httpsPorts), tag: "D" + (i+1) }));
+  mainDomains.forEach((domain, i) => {
+    links.push(buildLink({ core, proto: 'tls', userID, hostName, address: domain, port: pick(httpsPorts), tag: `D${i+1}` }));
     if (!isPagesDeployment) {
-      links.push(buildLink({ core: core, proto: 'tcp', userID: userID, hostName: hostName, address: domain, port: pick(httpPorts), tag: "D" + (i+1) }));
+      links.push(buildLink({ core, proto: 'tcp', userID, hostName, address: domain, port: pick(httpPorts), tag: `D${i+1}` }));
     }
   });
 
   try {
-    var r = await fetch('https://raw.githubusercontent.com/NiREvil/vless/refs/heads/main/Cloudflare-IPs.json');
+    const r = await fetch('https://raw.githubusercontent.com/NiREvil/vless/refs/heads/main/Cloudflare-IPs.json');
     if (r.ok) {
-      var json = await r.json();
-      var ips = [].concat(json.ipv4 || [], json.ipv6 || []).slice(0, 20).map(function(x) { return x.ip; });
-      ips.forEach(function(ip, i) {
-        var formattedAddress = ip.includes(':') ? "[" + ip + "]" : ip;
-        links.push(buildLink({ core: core, proto: 'tls', userID: userID, hostName: hostName, address: formattedAddress, port: pick(httpsPorts), tag: "IP" + (i+1) }));
+      const json = await r.json();
+      const ips = [...(json.ipv4 ?? []), ...(json.ipv6 ?? [])].slice(0, 20).map(x => x.ip);
+      ips.forEach((ip, i) => {
+        const formattedAddress = ip.includes(':') ? `[${ip}]` : ip;
+        links.push(buildLink({ core, proto: 'tls', userID, hostName, address: formattedAddress, port: pick(httpsPorts), tag: `IP${i+1}` }));
         if (!isPagesDeployment) {
-          links.push(buildLink({ core: core, proto: 'tcp', userID: userID, hostName: hostName, address: formattedAddress, port: pick(httpPorts), tag: "IP" + (i+1) }));
+          links.push(buildLink({ core, proto: 'tcp', userID, hostName, address: formattedAddress, port: pick(httpPorts), tag: `IP${i+1}` }));
         }
       });
     }
@@ -588,17 +580,17 @@ async function handleIpSubscription(core, userID, hostName) {
     console.error('Fetch IP list failed', e);
   }
 
-  var headers = new Headers({ 'Content-Type': 'text/plain;charset=utf-8' });
+  const headers = new Headers({ 'Content-Type': 'text/plain;charset=utf-8' });
   addSecurityHeaders(headers, null, {});
 
-  return new Response(btoa(links.join('\n')), { headers: headers });
+  return new Response(btoa(links.join('\n')), { headers });
 }
 
 // ============================================================================
 // ADMIN PANEL HTML (preserved from original, with auto-refresh enhancements)
 // ============================================================================
 
-var adminLoginHTML = [
+const adminLoginHTML = [
   '<!DOCTYPE html>',
   '<html lang="en">',
   '<head>',
@@ -633,7 +625,7 @@ var adminLoginHTML = [
   '</html>'
 ].join('\n');
 
-var adminPanelHTML = [
+const adminPanelHTML = [
   '<!DOCTYPE html>',
   '<html lang="en">',
   '<head>',
@@ -816,93 +808,82 @@ var adminPanelHTML = [
   '    </div>',
   '',
   '    <script nonce="CSP_NONCE_PLACEHOLDER">',
-  '        document.addEventListener(\'DOMContentLoaded\', function() {',
-  '            var API_BASE = \'ADMIN_API_BASE_PATH_PLACEHOLDER\';',
-  '            var allUsers = [];',
-  '            var userList = document.getElementById(\'userList\');',
-  '            var createUserForm = document.getElementById(\'createUserForm\');',
-  '            var generateUUIDBtn = document.getElementById(\'generateUUID\');',
-  '            var uuidInput = document.getElementById(\'uuid\');',
-  '            var toast = document.getElementById(\'toast\');',
-  '            var editModal = document.getElementById(\'editModal\');',
-  '            var editUserForm = document.getElementById(\'editUserForm\');',
-  '            var searchInput = document.getElementById(\'searchInput\');',
-  '            var selectAll = document.getElementById(\'selectAll\');',
-  '            var deleteSelected = document.getElementById(\'deleteSelected\');',
-  '            var logoutBtn = document.getElementById(\'logoutBtn\');',
-  '            var autoRefreshInterval;',
+  '        document.addEventListener(\'DOMContentLoaded\', () => {',
+  '            const API_BASE = \'ADMIN_API_BASE_PATH_PLACEHOLDER\';',
+  '            let allUsers = [];',
+  '            const userList = document.getElementById(\'userList\');',
+  '            const createUserForm = document.getElementById(\'createUserForm\');',
+  '            const generateUUIDBtn = document.getElementById(\'generateUUID\');',
+  '            const uuidInput = document.getElementById(\'uuid\');',
+  '            const toast = document.getElementById(\'toast\');',
+  '            const editModal = document.getElementById(\'editModal\');',
+  '            const editUserForm = document.getElementById(\'editUserForm\');',
+  '            const searchInput = document.getElementById(\'searchInput\');',
+  '            const selectAll = document.getElementById(\'selectAll\');',
+  '            const deleteSelected = document.getElementById(\'deleteSelected\');',
+  '            const logoutBtn = document.getElementById(\'logoutBtn\');',
+  '            let autoRefreshInterval;',
   '',
   '            function escapeHTML(str) {',
   '              if (typeof str !== \'string\') return \'\';',
-  '              return str.replace(/[&<>"\']/g, function(m) {',
-  '                return {',
-  '                  \'&\': \'&amp;\',',
-  '                  \'<\': \'&lt;\',',
-  '                  \'>\': \'&gt;\',',
-  '                  \'"\' : \'&quot;\',',
-  '                  "\'": \'&#39;\'',
-  '                }[m];',
-  '              });',
+  '              return str.replace(/[&<>"\']/g, m => ({',
+  '                \'&\': \'&amp;\',',
+  '                \'<\': \'&lt;\',',
+  '                \'>\': \'&gt;\',',
+  '                \'"\' : \'&quot;\',',
+  '                "\'": \'&#39;\'',
+  '              })[m]);',
   '            }',
   '',
   '            function formatBytes(bytes) {',
   '              if (bytes === 0) return \'0 Bytes\';',
-  '              var k = 1024;',
-  '              var sizes = [\'Bytes\', \'KB\', \'MB\', \'GB\', \'TB\', \'PB\', \'EB\', \'ZB\', \'YB\'];',
-  '              var i = Math.floor(Math.log(bytes) / Math.log(k));',
+  '              const k = 1024;',
+  '              const sizes = [\'Bytes\', \'KB\', \'MB\', \'GB\', \'TB\', \'PB\', \'EB\', \'ZB\', \'YB\'];',
+  '              const i = Math.floor(Math.log(bytes) / Math.log(k));',
   '              return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + \' \' + sizes[i];',
   '            }',
   '',
-  '            function showToast(message, isError) {',
-  '                isError = isError || false;',
+  '            function showToast(message, isError = false) {',
   '                toast.textContent = message;',
   '                toast.className = isError ? \'error\' : \'success\';',
   '                toast.classList.add(\'show\');',
-  '                setTimeout(function() { toast.classList.remove(\'show\'); }, 3000);',
+  '                setTimeout(() => { toast.classList.remove(\'show\'); }, 3000);',
   '            }',
   '',
-  '            function getCsrfToken() {',
-  '                var cookie = document.cookie.split(\'; \').find(function(row) { return row.startsWith(\'csrf_token=\'); });',
-  '                return cookie ? cookie.split(\'=\')[1] : \'\';',
-  '            }',
+  '            const getCsrfToken = () => document.cookie.split(\'; \').find(row => row.startsWith(\'csrf_token=\'))?.split(\'=\')[1] || \'\';',
   '',
-  '            var api = {',
-  '                get: function(endpoint) { return fetch(API_BASE + endpoint, { credentials: \'include\' }).then(handleResponse); },',
-  '                post: function(endpoint, body) { return fetch(API_BASE + endpoint, { method: \'POST\', credentials: \'include\', headers: {\'Content-Type\': \'application/json\', \'X-CSRF-Token\': getCsrfToken()}, body: JSON.stringify(body) }).then(handleResponse); },',
-  '                put: function(endpoint, body) { return fetch(API_BASE + endpoint, { method: \'PUT\', credentials: \'include\', headers: {\'Content-Type\': \'application/json\', \'X-CSRF-Token\': getCsrfToken()}, body: JSON.stringify(body) }).then(handleResponse); },',
-  '                \'delete\': function(endpoint) { return fetch(API_BASE + endpoint, { method: \'DELETE\', credentials: \'include\', headers: {\'X-CSRF-Token\': getCsrfToken()} }).then(handleResponse); },',
+  '            const api = {',
+  '                get: (endpoint) => fetch(API_BASE + endpoint, { credentials: \'include\' }).then(handleResponse),',
+  '                post: (endpoint, body) => fetch(API_BASE + endpoint, { method: \'POST\', credentials: \'include\', headers: {\'Content-Type\': \'application/json\', \'X-CSRF-Token\': getCsrfToken()}, body: JSON.stringify(body) }).then(handleResponse),',
+  '                put: (endpoint, body) => fetch(API_BASE + endpoint, { method: \'PUT\', credentials: \'include\', headers: {\'Content-Type\': \'application/json\', \'X-CSRF-Token\': getCsrfToken()}, body: JSON.stringify(body) }).then(handleResponse),',
+  '                delete: (endpoint) => fetch(API_BASE + endpoint, { method: \'DELETE\', credentials: \'include\', headers: {\'X-CSRF-Token\': getCsrfToken()} }).then(handleResponse),',
   '            };',
   '',
-  '            function handleResponse(response) {',
+  '            async function handleResponse(response) {',
   '                if (response.status === 401) {',
   '                    showToast(\'Session expired. Please log in again.\', true);',
-  '                    setTimeout(function() { window.location.reload(); }, 2000);',
+  '                    setTimeout(() => window.location.reload(), 2000);',
   '                }',
   '                if (!response.ok) {',
-  '                    return response.json().then(function(errorData) {',
-  '                        throw new Error(errorData.error || \'Request failed with status \' + response.status);',
-  '                    }).catch(function() {',
-  '                        throw new Error(\'An unknown error occurred.\');',
-  '                    });',
+  '                    const errorData = await response.json().catch(() => ({ error: \'An unknown error occurred.\' }));',
+  '                    throw new Error(errorData.error || \'Request failed with status \' + response.status);',
   '                }',
   '                return response.status === 204 ? null : response.json();',
   '            }',
   '',
-  '            function pad(num) {',
-  '                return num.toString().padStart(2, \'0\');',
-  '            }',
+  '            const pad = (num) => num.toString().padStart(2, \'0\');',
   '',
   '            function localToUTC(dateStr, timeStr) {',
   '                if (!dateStr || !timeStr) return { utcDate: \'\', utcTime: \'\' };',
-  '                var localDateTime = new Date(dateStr + \'T\' + timeStr);',
+  '                const localDateTime = new Date(dateStr + \'T\' + timeStr);',
   '                if (isNaN(localDateTime.getTime())) return { utcDate: \'\', utcTime: \'\' };',
   '',
-  '                var year = localDateTime.getUTCFullYear();',
-  '                var month = pad(localDateTime.getUTCMonth() + 1);',
-  '                var day = pad(localDateTime.getUTCDate());',
-  '                var hours = pad(localDateTime.getUTCHours());',
-  '                var minutes = pad(localDateTime.getUTCMinutes());',
-  '                var seconds = pad(localDateTime.getUTCSeconds());',
+  '                const year = localDateTime.getUTCFullYear();',
+  '                const month = pad(localDateTime.getUTCMonth() + 1);',
+  '                const day = pad(localDateTime.getUTCDate());',
+  '                const hours = pad(localDateTime.getUTCHours());',
+  '                const minutes = pad(localDateTime.getUTCMinutes());',
+  '                const seconds = pad(localDateTime.getUTCSeconds());',
   '',
   '                return {',
   '                    utcDate: year + \'-\' + month + \'-\' + day,',
@@ -912,15 +893,15 @@ var adminPanelHTML = [
   '',
   '            function utcToLocal(utcDateStr, utcTimeStr) {',
   '                if (!utcDateStr || !utcTimeStr) return { localDate: \'\', localTime: \'\' };',
-  '                var utcDateTime = new Date(utcDateStr + \'T\' + utcTimeStr + \'Z\');',
+  '                const utcDateTime = new Date(utcDateStr + \'T\' + utcTimeStr + \'Z\');',
   '                if (isNaN(utcDateTime.getTime())) return { localDate: \'\', localTime: \'\' };',
   '',
-  '                var year = utcDateTime.getFullYear();',
-  '                var month = pad(utcDateTime.getMonth() + 1);',
-  '                var day = pad(utcDateTime.getDate());',
-  '                var hours = pad(utcDateTime.getHours());',
-  '                var minutes = pad(utcDateTime.getMinutes());',
-  '                var seconds = pad(utcDateTime.getSeconds());',
+  '                const year = utcDateTime.getFullYear();',
+  '                const month = pad(utcDateTime.getMonth() + 1);',
+  '                const day = pad(utcDateTime.getDate());',
+  '                const hours = pad(utcDateTime.getHours());',
+  '                const minutes = pad(utcDateTime.getMinutes());',
+  '                const seconds = pad(utcDateTime.getSeconds());',
   '',
   '                return {',
   '                    localDate: year + \'-\' + month + \'-\' + day,',
@@ -929,10 +910,10 @@ var adminPanelHTML = [
   '            }',
   '',
   '            function addExpiryTime(dateInputId, timeInputId, amount, unit) {',
-  '                var dateInput = document.getElementById(dateInputId);',
-  '                var timeInput = document.getElementById(timeInputId);',
+  '                const dateInput = document.getElementById(dateInputId);',
+  '                const timeInput = document.getElementById(timeInputId);',
   '',
-  '                var date = new Date(dateInput.value + \'T\' + (timeInput.value || \'00:00:00\'));',
+  '                let date = new Date(dateInput.value + \'T\' + (timeInput.value || \'00:00:00\'));',
   '                if (isNaN(date.getTime())) {',
   '                    date = new Date();',
   '                }',
@@ -941,21 +922,21 @@ var adminPanelHTML = [
   '                else if (unit === \'day\') date.setDate(date.getDate() + amount);',
   '                else if (unit === \'month\') date.setMonth(date.getMonth() + amount);',
   '',
-  '                var year = date.getFullYear();',
-  '                var month = pad(date.getMonth() + 1);',
-  '                var day = pad(date.getDate());',
-  '                var hours = pad(date.getHours());',
-  '                var minutes = pad(date.getMinutes());',
-  '                var seconds = pad(date.getSeconds());',
+  '                const year = date.getFullYear();',
+  '                const month = pad(date.getMonth() + 1);',
+  '                const day = pad(date.getDate());',
+  '                const hours = pad(date.getHours());',
+  '                const minutes = pad(date.getMinutes());',
+  '                const seconds = pad(date.getSeconds());',
   '',
   '                dateInput.value = year + \'-\' + month + \'-\' + day;',
   '                timeInput.value = hours + \':\' + minutes + \':\' + seconds;',
   '            }',
   '',
-  '            document.body.addEventListener(\'click\', function(e) {',
-  '                var target = e.target.closest(\'.time-quick-set-group button\');',
+  '            document.body.addEventListener(\'click\', (e) => {',
+  '                const target = e.target.closest(\'.time-quick-set-group button\');',
   '                if (!target) return;',
-  '                var group = target.closest(\'.time-quick-set-group\');',
+  '                const group = target.closest(\'.time-quick-set-group\');',
   '                addExpiryTime(',
   '                    group.dataset.targetDate,',
   '                    group.dataset.targetTime,',
@@ -965,65 +946,68 @@ var adminPanelHTML = [
   '            });',
   '',
   '            function formatExpiryDateTime(expDateStr, expTimeStr) {',
-  '                var expiryUTC = new Date(expDateStr + \'T\' + expTimeStr + \'Z\');',
+  '                const expiryUTC = new Date(expDateStr + \'T\' + expTimeStr + \'Z\');',
   '                if (isNaN(expiryUTC.getTime())) return { local: \'Invalid Date\', utc: \'\', relative: \'\', tehran: \'\', isExpired: true };',
   '',
-  '                var now = new Date();',
-  '                var isExpired = expiryUTC < now;',
+  '                const now = new Date();',
+  '                const isExpired = expiryUTC < now;',
   '',
-  '                var commonOptions = {',
+  '                const commonOptions = {',
   '                    year: \'numeric\', month: \'2-digit\', day: \'2-digit\',',
   '                    hour: \'2-digit\', minute: \'2-digit\', second: \'2-digit\', hour12: false, timeZoneName: \'short\'',
   '                };',
   '',
-  '                var localTime = expiryUTC.toLocaleString(undefined, commonOptions);',
-  '                var tehranTime = \'N/A\';',
+  '                const localTime = expiryUTC.toLocaleString(undefined, commonOptions);',
+  '                let tehranTime = \'N/A\';',
   '                try {',
-  '                     tehranTime = expiryUTC.toLocaleString(\'en-US\', Object.assign({}, commonOptions, { timeZone: \'Asia/Tehran\' }));',
+  '                     tehranTime = expiryUTC.toLocaleString(\'en-US\', { ...commonOptions, timeZone: \'Asia/Tehran\' });',
   '                } catch(e) { console.error("Could not format Tehran time:", e); }',
-  '                var utcTime = expiryUTC.toISOString().replace(\'T\', \' \').substring(0, 19) + \' UTC\';',
+  '                const utcTime = expiryUTC.toISOString().replace(\'T\', \' \').substring(0, 19) + \' UTC\';',
   '',
-  '                var relativeTime = \'\';',
+  '                let relativeTime = \'\';',
   '                try {',
-  '                    var rtf = new Intl.RelativeTimeFormat(\'en\', { numeric: \'auto\' });',
-  '                    var diffSeconds = (expiryUTC.getTime() - now.getTime()) / 1000;',
-  '                    var diffMinutes = Math.round(diffSeconds / 60);',
-  '                    var diffHours = Math.round(diffSeconds / 3600);',
-  '                    var diffDays = Math.round(diffSeconds / 86400);',
+  '                    const rtf = new Intl.RelativeTimeFormat(\'en\', { numeric: \'auto\' });',
+  '                    const diffSeconds = (expiryUTC.getTime() - now.getTime()) / 1000;',
+  '                    let diffMinutes = Math.round(diffSeconds / 60);',
+  '                    let diffHours = Math.round(diffSeconds / 3600);',
+  '                    let diffDays = Math.round(diffSeconds / 86400);',
   '                    if (Math.abs(diffSeconds) < 60) relativeTime = rtf.format(Math.round(diffSeconds), \'second\');',
   '                    else if (Math.abs(diffSeconds) < 3600) relativeTime = rtf.format(diffMinutes, \'minute\');',
   '                    else if (Math.abs(diffSeconds) < 86400) relativeTime = rtf.format(diffHours, \'hour\');',
   '                    else relativeTime = rtf.format(diffDays, \'day\');',
   '                } catch(e) { console.error("Could not format relative time:", e); }',
   '',
-  '                return { local: localTime, tehran: tehranTime, utc: utcTime, relative: relativeTime, isExpired: isExpired };',
+  '                return { local: localTime, tehran: tehranTime, utc: utcTime, relative: relativeTime, isExpired };',
   '            }',
   '',
-  '            function copyUUID(uuid, button) {',
-  '                navigator.clipboard.writeText(uuid).then(function() {',
-  '                    var originalText = button.innerHTML;',
+  '            async function copyUUID(uuid, button) {',
+  '                try {',
+  '                    await navigator.clipboard.writeText(uuid);',
+  '                    const originalText = button.innerHTML;',
   '                    button.innerHTML = \'✓ Copied\';',
   '                    button.classList.add(\'copied\');',
-  '                    setTimeout(function() {',
+  '                    setTimeout(() => {',
   '                        button.innerHTML = originalText;',
   '                        button.classList.remove(\'copied\');',
   '                    }, 2000);',
   '                    showToast(\'UUID copied to clipboard!\', false);',
-  '                }).catch(function(error) {',
-  '                    var textArea = document.createElement("textarea");',
-  '                    textArea.value = uuid;',
-  '                    textArea.style.position = "fixed";',
-  '                    textArea.style.top = "0";',
-  '                    textArea.style.left = "0";',
-  '                    document.body.appendChild(textArea);',
-  '                    textArea.focus();',
-  '                    textArea.select();',
+  '                } catch (error) {',
   '                    try {',
+  '                        const textArea = document.createElement("textarea");',
+  '                        textArea.value = uuid;',
+  '                        textArea.style.position = "fixed";',
+  '                        textArea.style.top = "0";',
+  '                        textArea.style.left = "0";',
+  '                        document.body.appendChild(textArea);',
+  '                        textArea.focus();',
+  '                        textArea.select();',
   '                        document.execCommand(\'copy\');',
-  '                        var originalText = button.innerHTML;',
+  '                        document.body.removeChild(textArea);',
+  '                        ',
+  '                        const originalText = button.innerHTML;',
   '                        button.innerHTML = \'✓ Copied\';',
   '                        button.classList.add(\'copied\');',
-  '                        setTimeout(function() {',
+  '                        setTimeout(() => {',
   '                            button.innerHTML = originalText;',
   '                            button.classList.remove(\'copied\');',
   '                        }, 2000);',
@@ -1032,109 +1016,107 @@ var adminPanelHTML = [
   '                        showToast(\'Failed to copy UUID\', true);',
   '                        console.error(\'Copy error:\', error, err);',
   '                    }',
-  '                    document.body.removeChild(textArea);',
-  '                });',
+  '                }',
   '            }',
   '',
-  '            function fetchStats() {',
-  '              api.get(\'/stats\').then(function(stats) {',
+  '            async function fetchStats() {',
+  '              try {',
+  '                const stats = await api.get(\'/stats\');',
   '                document.getElementById(\'total-users\').textContent = stats.total_users;',
   '                document.getElementById(\'active-users\').textContent = stats.active_users;',
   '                document.getElementById(\'expired-users\').textContent = stats.expired_users;',
   '                document.getElementById(\'total-traffic\').textContent = formatBytes(stats.total_traffic);',
-  '              }).catch(function(error) { showToast(error.message, true); });',
+  '              } catch (error) { showToast(error.message, true); }',
   '            }',
   '',
-  '            function renderUsers(usersToRender) {',
-  '                usersToRender = usersToRender || allUsers;',
+  '            function renderUsers(usersToRender = allUsers) {',
   '                userList.innerHTML = \'\';',
   '                if (usersToRender.length === 0) {',
   '                    userList.innerHTML = \'<tr><td colspan="11" style="text-align:center;">No users found.</td></tr>\';',
   '                } else {',
-  '                    usersToRender.forEach(function(user) {',
-  '                        var expiry = formatExpiryDateTime(user.expiration_date, user.expiration_time);',
-  '                        var row = document.createElement(\'tr\');',
-  '                        row.innerHTML = \'',
-  '                            <td><input type="checkbox" class="user-checkbox checkbox" data-uuid="\' + user.uuid + \'></td>',
+  '                    usersToRender.forEach(user => {',
+  '                        const expiry = formatExpiryDateTime(user.expiration_date, user.expiration_time);',
+  '                        const row = document.createElement(\'tr\');',
+  '                        row.innerHTML = \`',
+  '                            <td><input type="checkbox" class="user-checkbox checkbox" data-uuid="\${user.uuid}"></td>',
   '                            <td>',
   '                                <div class="uuid-cell">',
-  '                                    <span class="uuid-text" title="\' + user.uuid + \'">\' + user.uuid.substring(0, 8) + \'...</span>',
-  '                                    <button class="btn-copy-uuid" data-uuid="\' + user.uuid + \'">📋 Copy</button>',
+  '                                    <span class="uuid-text" title="\${user.uuid}">\${user.uuid.substring(0, 8)}...</span>',
+  '                                    <button class="btn-copy-uuid" data-uuid="\${user.uuid}">📋 Copy</button>',
   '                                </div>',
   '                            </td>',
-  '                            <td>\' + new Date(user.created_at).toLocaleString() + \'</td>',
+  '                            <td>\${new Date(user.created_at).toLocaleString()}</td>',
   '                            <td>',
   '                                <div class="time-display">',
-  '                                    <span class="time-local" title="Your Local Time">\' + expiry.local + \'</span>',
-  '                                    <span class="time-utc" title="Coordinated Universal Time">\' + expiry.utc + \'</span>',
-  '                                    <span class="time-relative">\' + expiry.relative + \'</span>',
+  '                                    <span class="time-local" title="Your Local Time">\${expiry.local}</span>',
+  '                                    <span class="time-utc" title="Coordinated Universal Time">\${expiry.utc}</span>',
+  '                                    <span class="time-relative">\${expiry.relative}</span>',
   '                                </div>',
   '                            </td>',
   '                             <td>',
   '                                <div class="time-display">',
-  '                                    <span class="time-local" title="Tehran Time (GMT+03:30)">\' + expiry.tehran + \'</span>',
+  '                                    <span class="time-local" title="Tehran Time (GMT+03:30)">\${expiry.tehran}</span>',
   '                                    <span class="time-utc">Asia/Tehran</span>',
   '                                </div>',
   '                            </td>',
-  '                            <td><span class="status-badge \' + (expiry.isExpired ? \'status-expired\' : \'status-active\') + \'">\' + (expiry.isExpired ? \'Expired\' : \'Active\') + \'</span></td>',
-  '                            <td>\' + escapeHTML(user.notes || \'-\') + \'</td>',
-  '                            <td>\' + (user.traffic_limit ? formatBytes(user.traffic_limit) : \'Unlimited\') + \'</td>',
-  '                            <td>\' + formatBytes(user.traffic_used || 0) + \'</td>',
-  '                            <td>\' + (user.ip_limit === -1 ? \'Unlimited\' : user.ip_limit) + \'</td>',
+  '                            <td><span class="status-badge \${expiry.isExpired ? \'status-expired\' : \'status-active\'}">\${expiry.isExpired ? \'Expired\' : \'Active\'}</span></td>',
+  '                            <td>\${escapeHTML(user.notes || \'-\')}</td>',
+  '                            <td>\${user.traffic_limit ? formatBytes(user.traffic_limit) : \'Unlimited\'}</td>',
+  '                            <td>\${formatBytes(user.traffic_used || 0)}</td>',
+  '                            <td>\${user.ip_limit === -1 ? \'Unlimited\' : user.ip_limit}</td>',
   '                            <td>',
   '                                <div class="actions-cell">',
-  '                                    <button class="btn btn-secondary btn-edit" data-uuid="\' + user.uuid + \'">Edit</button>',
-  '                                    <button class="btn btn-danger btn-delete" data-uuid="\' + user.uuid + \'">Delete</button>',
+  '                                    <button class="btn btn-secondary btn-edit" data-uuid="\${user.uuid}">Edit</button>',
+  '                                    <button class="btn btn-danger btn-delete" data-uuid="\${user.uuid}">Delete</button>',
   '                                </div>',
   '                            </td>',
-  '                        \';',
+  '                        \`;',
   '                        userList.appendChild(row);',
   '                    });',
   '                }',
   '            }',
   '',
-  '            function fetchAndRenderUsers() {',
-  '                api.get(\'/users\').then(function(users) {',
-  '                    allUsers = users;',
-  '                    allUsers.sort(function(a, b) { return new Date(b.created_at) - new Date(a.created_at); });',
+  '            async function fetchAndRenderUsers() {',
+  '                try {',
+  '                    allUsers = await api.get(\'/users\');',
+  '                    allUsers.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));',
   '                    renderUsers();',
   '                    fetchStats();',
-  '                }).catch(function(error) { showToast(error.message, true); });',
+  '                } catch (error) { showToast(error.message, true); }',
   '            }',
   '',
   '            function startAutoRefresh() {',
   '              if (autoRefreshInterval) clearInterval(autoRefreshInterval);',
-  '              autoRefreshInterval = setInterval(function() {',
-  '                fetchAndRenderUsers().then(function() {',
+  '              autoRefreshInterval = setInterval(async () => {',
+  '                try {',
+  '                  await fetchAndRenderUsers();',
   '                  showToast(\'Dashboard auto-refreshed\', false);',
-  '                }).catch(function(error) {',
+  '                } catch (error) {',
   '                  showToast(\'Auto-refresh failed: \' + error.message, true);',
-  '                });',
+  '                }',
   '              }, ' + CONST.AUTO_REFRESH_INTERVAL + ');',
   '            }',
   '',
-  '            function handleCreateUser(e) {',
+  '            async function handleCreateUser(e) {',
   '                e.preventDefault();',
-  '                var localDate = document.getElementById(\'expiryDate\').value;',
-  '                var localTime = document.getElementById(\'expiryTime\').value;',
+  '                const localDate = document.getElementById(\'expiryDate\').value;',
+  '                const localTime = document.getElementById(\'expiryTime\').value;',
   '',
-  '                var utc = localToUTC(localDate, localTime);',
-  '                var utcDate = utc.utcDate;',
-  '                var utcTime = utc.utcTime;',
-  '                if (!utcDate || !utcTime) return showToast(\'Invalid date or time entered.\', true);',
+  '                const { utcDate, utcTime } = localToUTC(localDate, localTime);',
+  '                if (!utcDate|| !utcTime) return showToast(\'Invalid date or time entered.\', true);',
   '',
-  '                var dataLimit = document.getElementById(\'dataLimit\').value;',
-  '                var dataUnit = document.getElementById(\'dataUnit\').value;',
-  '                var trafficLimit = null;',
+  '                const dataLimit = document.getElementById(\'dataLimit\').value;',
+  '                const dataUnit = document.getElementById(\'dataUnit\').value;',
+  '                let trafficLimit = null;',
   '                ',
   '                if (dataUnit !== \'unlimited\' && dataLimit) {',
-  '                    var multipliers = { KB: 1024, MB: 1024*1024, GB: 1024*1024*1024, TB: 1024*1024*1024*1024 };',
+  '                    const multipliers = { KB: 1024, MB: 1024**2, GB: 1024**3, TB: 1024**4 };',
   '                    trafficLimit = parseFloat(dataLimit) * (multipliers[dataUnit] || 1);',
   '                }',
   '',
-  '                var ipLimit = parseInt(document.getElementById(\'ipLimit\').value, 10) || -1;',
+  '                const ipLimit = parseInt(document.getElementById(\'ipLimit\').value) || -1;',
   '',
-  '                var userData = {',
+  '                const userData = {',
   '                    uuid: uuidInput.value,',
   '                    exp_date: utcDate,',
   '                    exp_time: utcTime,',
@@ -1143,57 +1125,58 @@ var adminPanelHTML = [
   '                    ip_limit: ipLimit',
   '                };',
   '',
-  '                api.post(\'/users\', userData).then(function() {',
+  '                try {',
+  '                    await api.post(\'/users\', userData);',
   '                    showToast(\'User created successfully!\');',
   '                    createUserForm.reset();',
   '                    uuidInput.value = crypto.randomUUID();',
   '                    setDefaultExpiry();',
-  '                    fetchAndRenderUsers();',
-  '                }).catch(function(error) { showToast(error.message, true); });',
+  '                    await fetchAndRenderUsers();',
+  '                } catch (error) { showToast(error.message, true); }',
   '            }',
   '',
-  '            function handleDeleteUser(uuid) {',
+  '            async function handleDeleteUser(uuid) {',
   '                if (confirm(\'Delete user \' + uuid + \'?\')) {',
-  '                    api[\'delete\'](\'/users/\' + uuid).then(function() {',
+  '                    try {',
+  '                        await api.delete(\'/users/\' + uuid);',
   '                        showToast(\'User deleted successfully!\');',
-  '                        fetchAndRenderUsers();',
-  '                    }).catch(function(error) { showToast(error.message, true); });',
+  '                        await fetchAndRenderUsers();',
+  '                    } catch (error) { showToast(error.message, true); }',
   '                }',
   '            }',
   '',
-  '            function handleBulkDelete() {',
-  '                var selected = Array.from(document.querySelectorAll(\'.user-checkbox:checked\')).map(function(cb) { return cb.dataset.uuid; });',
+  '            async function handleBulkDelete() {',
+  '                const selected = Array.from(document.querySelectorAll(\'.user-checkbox:checked\')).map(cb => cb.dataset.uuid);',
   '                if (selected.length === 0) return showToast(\'No users selected.\', true);',
   '                if (confirm(\'Delete \' + selected.length + \' selected users?\')) {',
-  '                    api.post(\'/users/bulk-delete\', { uuids: selected }).then(function() {',
+  '                    try {',
+  '                        await api.post(\'/users/bulk-delete\', { uuids: selected });',
   '                        showToast(\'Selected users deleted successfully!\');',
-  '                        fetchAndRenderUsers();',
-  '                    }).catch(function(error) { showToast(error.message, true); });',
+  '                        await fetchAndRenderUsers();',
+  '                    } catch (error) { showToast(error.message, true); }',
   '                }',
   '            }',
   '',
   '            function openEditModal(uuid) {',
-  '                var user = allUsers.find(function(u) { return u.uuid === uuid; });',
+  '                const user = allUsers.find(u => u.uuid === uuid);',
   '                if (!user) return showToast(\'User not found.\', true);',
   '',
-  '                var local = utcToLocal(user.expiration_date, user.expiration_time);',
-  '                var localDate = local.localDate;',
-  '                var localTime = local.localTime;',
+  '                const { localDate, localTime } = utcToLocal(user.expiration_date, user.expiration_time);',
   '',
   '                document.getElementById(\'editUuid\').value = user.uuid;',
   '                document.getElementById(\'editExpiryDate\').value = localDate;',
   '                document.getElementById(\'editExpiryTime\').value = localTime;',
   '                document.getElementById(\'editNotes\').value = user.notes || \'\';',
   '',
-  '                var editDataLimit = document.getElementById(\'editDataLimit\');',
-  '                var editDataUnit = document.getElementById(\'editDataUnit\');',
+  '                const editDataLimit = document.getElementById(\'editDataLimit\');',
+  '                const editDataUnit = document.getElementById(\'editDataUnit\');',
   '                if (user.traffic_limit === null || user.traffic_limit === 0) {',
   '                  editDataUnit.value = \'unlimited\';',
   '                  editDataLimit.value = \'\';',
   '                } else {',
-  '                  var bytes = user.traffic_limit;',
-  '                  var unit = \'KB\';',
-  '                  var value = bytes / 1024;',
+  '                  let bytes = user.traffic_limit;',
+  '                  let unit = \'KB\';',
+  '                  let value = bytes / 1024;',
   '                  ',
   '                  if (value >= 1024) { value = value / 1024; unit = \'MB\'; }',
   '                  if (value >= 1024) { value = value / 1024; unit = \'GB\'; }',
@@ -1202,7 +1185,7 @@ var adminPanelHTML = [
   '                  editDataLimit.value = value.toFixed(2);',
   '                  editDataUnit.value = unit;',
   '                }',
-  '                var editIpLimit = document.getElementById(\'editIpLimit\');',
+  '                const editIpLimit = document.getElementById(\'editIpLimit\');',
   '                editIpLimit.value = user.ip_limit !== null ? user.ip_limit : -1;',
   '                document.getElementById(\'resetTraffic\').checked = false;',
   '',
@@ -1211,28 +1194,26 @@ var adminPanelHTML = [
   '',
   '            function closeEditModal() { editModal.classList.remove(\'show\'); }',
   '',
-  '            function handleEditUser(e) {',
+  '            async function handleEditUser(e) {',
   '                e.preventDefault();',
-  '                var localDate = document.getElementById(\'editExpiryDate\').value;',
-  '                var localTime = document.getElementById(\'editExpiryTime\').value;',
+  '                const localDate = document.getElementById(\'editExpiryDate\').value;',
+  '                const localTime = document.getElementById(\'editExpiryTime\').value;',
   '',
-  '                var utc = localToUTC(localDate, localTime);',
-  '                var utcDate = utc.utcDate;',
-  '                var utcTime = utc.utcTime;',
+  '                const { utcDate, utcTime } = localToUTC(localDate, localTime);',
   '                if (!utcDate || !utcTime) return showToast(\'Invalid date or time entered.\', true);',
   '',
-  '                var dataLimit = document.getElementById(\'editDataLimit\').value;',
-  '                var dataUnit = document.getElementById(\'editDataUnit\').value;',
-  '                var trafficLimit = null;',
+  '                const dataLimit = document.getElementById(\'editDataLimit\').value;',
+  '                const dataUnit = document.getElementById(\'editDataUnit\').value;',
+  '                let trafficLimit = null;',
   '                ',
   '                if (dataUnit !== \'unlimited\' && dataLimit) {',
-  '                    var multipliers = { KB: 1024, MB: 1024*1024, GB: 1024*1024*1024, TB: 1024*1024*1024*1024 };',
+  '                    const multipliers = { KB: 1024, MB: 1024**2, GB: 1024**3, TB: 1024**4 };',
   '                    trafficLimit = parseFloat(dataLimit) * (multipliers[dataUnit] || 1);',
   '                }',
   '',
-  '                var ipLimit = parseInt(document.getElementById(\'editIpLimit\').value, 10) || -1;',
+  '                const ipLimit = parseInt(document.getElementById(\'editIpLimit\').value) || -1;',
   '',
-  '                var updatedData = {',
+  '                const updatedData = {',
   '                    exp_date: utcDate,',
   '                    exp_time: utcTime,',
   '                    notes: document.getElementById(\'editNotes\').value,',
@@ -1241,70 +1222,71 @@ var adminPanelHTML = [
   '                    reset_traffic: document.getElementById(\'resetTraffic\').checked',
   '                };',
   '',
-  '                api.put(\'/users/\' + document.getElementById(\'editUuid\').value, updatedData).then(function() {',
+  '                try {',
+  '                    await api.put(\'/users/\' + document.getElementById(\'editUuid\').value, updatedData);',
   '                    showToast(\'User updated successfully!\');',
   '                    closeEditModal();',
-  '                    fetchAndRenderUsers();',
-  '                }).catch(function(error) { showToast(error.message, true); });',
+  '                    await fetchAndRenderUsers();',
+  '                } catch (error) { showToast(error.message, true); }',
   '            }',
   '',
-  '            function handleLogout() {',
-  '                api.post(\'/logout\', {}).then(function() {',
+  '            async function handleLogout() {',
+  '                try {',
+  '                    await api.post(\'/logout\', {});',
   '                    showToast(\'Logged out successfully!\');',
-  '                    setTimeout(function() { window.location.reload(); }, 1000);',
-  '                }).catch(function(error) { showToast(error.message, true); });',
+  '                    setTimeout(() => window.location.reload(), 1000);',
+  '                } catch (error) { showToast(error.message, true); }',
   '            }',
   '',
   '            function setDefaultExpiry() {',
-  '                var now = new Date();',
+  '                const now = new Date();',
   '                now.setDate(now.getDate() + 1);',
   '',
-  '                var year = now.getFullYear();',
-  '                var month = pad(now.getMonth() + 1);',
-  '                var day = pad(now.getDate());',
-  '                var hours = pad(now.getHours());',
-  '                var minutes = pad(now.getMinutes());',
-  '                var seconds = pad(now.getSeconds());',
+  '                const year = now.getFullYear();',
+  '                const month = pad(now.getMonth() + 1);',
+  '                const day = pad(now.getDate());',
+  '                const hours = pad(now.getHours());',
+  '                const minutes = pad(now.getMinutes());',
+  '                const seconds = pad(now.getSeconds());',
   '',
   '                document.getElementById(\'expiryDate\').value = year + \'-\' + month + \'-\' + day;',
   '                document.getElementById(\'expiryTime\').value = hours + \':\' + minutes + \':\' + seconds;',
   '            }',
   '',
   '            function filterUsers() {',
-  '              var searchTerm = searchInput.value.toLowerCase();',
-  '              var filtered = allUsers.filter(function(user) { ',
-  '                return user.uuid.toLowerCase().includes(searchTerm) || ',
-  '                       (user.notes && user.notes.toLowerCase().includes(searchTerm));',
-  '              });',
+  '              const searchTerm = searchInput.value.toLowerCase();',
+  '              const filtered = allUsers.filter(user => ',
+  '                user.uuid.toLowerCase().includes(searchTerm) || ',
+  '                (user.notes && user.notes.toLowerCase().includes(searchTerm))',
+  '              );',
   '              renderUsers(filtered);',
   '            }',
   '',
-  '            generateUUIDBtn.addEventListener(\'click\', function() { uuidInput.value = crypto.randomUUID(); });',
+  '            generateUUIDBtn.addEventListener(\'click\', () => uuidInput.value = crypto.randomUUID());',
   '            createUserForm.addEventListener(\'submit\', handleCreateUser);',
   '            editUserForm.addEventListener(\'submit\', handleEditUser);',
-  '            editModal.addEventListener(\'click\', function(e) { if (e.target === editModal) closeEditModal(); });',
+  '            editModal.addEventListener(\'click\', (e) => { if (e.target === editModal) closeEditModal(); });',
   '            document.getElementById(\'modalCloseBtn\').addEventListener(\'click\', closeEditModal);',
   '            document.getElementById(\'modalCancelBtn\').addEventListener(\'click\', closeEditModal);',
   '            ',
-  '            userList.addEventListener(\'click\', function(e) {',
-  '                var copyBtn = e.target.closest(\'.btn-copy-uuid\');',
+  '            userList.addEventListener(\'click\', (e) => {',
+  '                const copyBtn = e.target.closest(\'.btn-copy-uuid\');',
   '                if (copyBtn) {',
-  '                    var uuid = copyBtn.dataset.uuid;',
+  '                    const uuid = copyBtn.dataset.uuid;',
   '                    copyUUID(uuid, copyBtn);',
   '                    return;',
   '                }',
   '',
-  '                var actionBtn = e.target.closest(\'button\');',
+  '                const actionBtn = e.target.closest(\'button\');',
   '                if (!actionBtn) return;',
-  '                var uuid = actionBtn.dataset.uuid;',
+  '                const uuid = actionBtn.dataset.uuid;',
   '                if (actionBtn.classList.contains(\'btn-edit\')) openEditModal(uuid);',
   '                else if (actionBtn.classList.contains(\'btn-delete\')) handleDeleteUser(uuid);',
   '            });',
   '            ',
   '            searchInput.addEventListener(\'input\', filterUsers);',
-  '            selectAll.addEventListener(\'change\', function(e) {',
-  '              var checkboxes = document.querySelectorAll(\'.user-checkbox\');',
-  '              for (var i = 0; i < checkboxes.length; i++) { checkboxes[i].checked = e.target.checked; }',
+  '            selectAll.addEventListener(\'change\', (e) => {',
+  '              document.querySelectorAll(\'.user-checkbox\').forEach(cb => cb.checked = e.target.checked);',
   '            });',
   '            deleteSelected.addEventListener(\'click\', handleBulkDelete);',
   '            logoutBtn.addEventListener(\'click\', handleLogout);',
@@ -1323,24 +1305,23 @@ var adminPanelHTML = [
 // ADMIN API HANDLERS
 // ============================================================================
 
-function isAdmin(request, env) {
-  var cookieHeader = request.headers.get('Cookie');
+async function isAdmin(request, env) {
+  const cookieHeader = request.headers.get('Cookie');
   if (!cookieHeader) return false;
 
-  var tokenMatch = cookieHeader.match(/auth_token=([^;]+)/);
-  var token = tokenMatch ? tokenMatch[1] : null;
+  const token = cookieHeader.match(/auth_token=([^;]+)/)?.[1];
   if (!token) return false;
 
-  var hashedToken = hashSHA256(token);
-  var storedHashedToken = kvGet(env.DB, 'admin_session_token_hash');
+  const hashedToken = await hashSHA256(token);
+  const storedHashedToken = await kvGet(env.DB, 'admin_session_token_hash');
   return storedHashedToken && timingSafeEqual(hashedToken, storedHashedToken);
 }
 
 async function handleAdminRequest(request, env, ctx, adminPrefix) {
-  var url = new URL(request.url);
-  var jsonHeader = { 'Content-Type': 'application/json' };
-  var htmlHeaders = new Headers({ 'Content-Type': 'text/html;charset=utf-8' });
-  var clientIp = request.headers.get('CF-Connecting-IP');
+  const url = new URL(request.url);
+  const jsonHeader = { 'Content-Type': 'application/json' };
+  const htmlHeaders = new Headers({ 'Content-Type': 'text/html;charset=utf-8' });
+  const clientIp = request.headers.get('CF-Connecting-IP');
 
   if (!env.ADMIN_KEY) {
     addSecurityHeaders(htmlHeaders, null, {});
@@ -1348,321 +1329,343 @@ async function handleAdminRequest(request, env, ctx, adminPrefix) {
   }
 
   if (env.ADMIN_IP_WHITELIST) {
-    var allowedIps = env.ADMIN_IP_WHITELIST.split(',').map(function(ip) { return ip.trim(); });
-    if (allowedIps.indexOf(clientIp) === -1) {
-      console.warn("Admin access denied for IP: " + clientIp + " (Not in whitelist)");
+    const allowedIps = env.ADMIN_IP_WHITELIST.split(',').map(ip => ip.trim());
+    if (!allowedIps.includes(clientIp)) {
+      console.warn(`Admin access denied for IP: ${clientIp} (Not in whitelist)`);
       addSecurityHeaders(htmlHeaders, null, {});
       return new Response('Access denied.', { status: 403, headers: htmlHeaders });
     }
   } else {
-    var scamalyticsConfig = {
+    const scamalyticsConfig = {
       username: env.SCAMALYTICS_USERNAME || Config.scamalytics.username,
       apiKey: env.SCAMALYTICS_API_KEY || Config.scamalytics.apiKey,
       baseUrl: env.SCAMALYTICS_BASEURL || Config.scamalytics.baseUrl,
     };
-    if (isSuspiciousIP(clientIp, scamalyticsConfig, env.SCAMALYTICS_THRESHOLD || CONST.SCAMALYTICS_THRESHOLD)) {
-      console.warn("Admin access denied for suspicious IP: " + clientIp);
+    if (await isSuspiciousIP(clientIp, scamalyticsConfig, env.SCAMALYTICS_THRESHOLD || CONST.SCAMALYTICS_THRESHOLD)) {
+      console.warn(`Admin access denied for suspicious IP: ${clientIp}`);
       addSecurityHeaders(htmlHeaders, null, {});
       return new Response('Access denied.', { status: 403, headers: htmlHeaders });
     }
   }
 
   if (env.ADMIN_HEADER_KEY) {
-    var headerValue = request.headers.get('X-Admin-Auth');
+    const headerValue = request.headers.get('X-Admin-Auth');
     if (!timingSafeEqual(headerValue || '', env.ADMIN_HEADER_KEY)) {
       addSecurityHeaders(htmlHeaders, null, {});
       return new Response('Access denied.', { status: 403, headers: htmlHeaders });
     }
   }
 
-  var adminBasePath = "/" + adminPrefix + "/" + env.ADMIN_KEY;
+  const adminBasePath = `/${adminPrefix}/${env.ADMIN_KEY}`;
 
   if (!url.pathname.startsWith(adminBasePath)) {
-    var headers = new Headers();
+    const headers = new Headers();
     addSecurityHeaders(headers, null, {});
-    return new Response('Not found', { status: 404, headers: headers });
+    return new Response('Not found', { status: 404, headers });
   }
 
-  var adminSubPath = url.pathname.substring(adminBasePath.length) || '/';
+  const adminSubPath = url.pathname.substring(adminBasePath.length) || '/';
 
   if (adminSubPath.startsWith('/api/')) {
-    if (!isAdmin(request, env)) {
-      var headers = new Headers(jsonHeader);
+    if (!(await isAdmin(request, env))) {
+      const headers = new Headers(jsonHeader);
       addSecurityHeaders(headers, null, {});
-      return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: headers });
+      return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers });
     }
 
     // Added rate limiting for API endpoints
-    var apiRateKey = "admin_api_rate:" + clientIp;
-    if (checkRateLimit(env.DB, apiRateKey, 100, 60)) { // 100 req/min
-      var headers = new Headers(jsonHeader);
+    const apiRateKey = `admin_api_rate:${clientIp}`;
+    if (await checkRateLimit(env.DB, apiRateKey, 100, 60)) { // 100 req/min
+      const headers = new Headers(jsonHeader);
       addSecurityHeaders(headers, null, {});
-      return new Response(JSON.stringify({ error: 'API rate limit exceeded' }), { status: 429, headers: headers });
+      return new Response(JSON.stringify({ error: 'API rate limit exceeded' }), { status: 429, headers });
     }
 
     if (request.method !== 'GET') {
-      var origin = request.headers.get('Origin');
-      var secFetch = request.headers.get('Sec-Fetch-Site');
+      const origin = request.headers.get('Origin');
+      const secFetch = request.headers.get('Sec-Fetch-Site');
 
       if (!origin || new URL(origin).hostname !== url.hostname || secFetch !== 'same-origin') {
-        var headers = new Headers(jsonHeader);
+        const headers = new Headers(jsonHeader);
         addSecurityHeaders(headers, null, {});
-        return new Response(JSON.stringify({ error: 'Invalid Origin/Request' }), { status: 403, headers: headers });
+        return new Response(JSON.stringify({ error: 'Invalid Origin/Request' }), { status: 403, headers });
       }
 
-      var csrfToken = request.headers.get('X-CSRF-Token');
-      var cookieCsrfMatch = request.headers.get('Cookie') ? request.headers.get('Cookie').match(/csrf_token=([^;]+)/) : null;
-      var cookieCsrf = cookieCsrfMatch ? cookieCsrfMatch[1] : null;
+      const csrfToken = request.headers.get('X-CSRF-Token');
+      const cookieCsrf = request.headers.get('Cookie')?.match(/csrf_token=([^;]+)/)?.[1];
       if (!csrfToken || !cookieCsrf || !timingSafeEqual(csrfToken, cookieCsrf)) {
-        var headers = new Headers(jsonHeader);
+        const headers = new Headers(jsonHeader);
         addSecurityHeaders(headers, null, {});
-        return new Response(JSON.stringify({ error: 'CSRF validation failed' }), { status: 403, headers: headers });
+        return new Response(JSON.stringify({ error: 'CSRF validation failed' }), { status: 403, headers });
       }
     }
     
     if (adminSubPath === '/api/stats' && request.method === 'GET') {
-      var headers = new Headers(jsonHeader);
+      const headers = new Headers(jsonHeader);
       addSecurityHeaders(headers, null, {});
-      var totalUsers = env.DB.prepare("SELECT COUNT(*) as count FROM users").first('count');
-      var expiredQuery = env.DB.prepare("SELECT COUNT(*) as count FROM users WHERE datetime(expiration_date || 'T' || expiration_time || 'Z') < datetime('now')").first();
-      var expiredUsers = expiredQuery ? expiredQuery.count : 0;
-      var activeUsers = totalUsers - expiredUsers;
-      var totalTrafficQuery = env.DB.prepare("SELECT SUM(traffic_used) as sum FROM users").first();
-      var totalTraffic = totalTrafficQuery ? totalTraffic.sum : 0;
-      return new Response(JSON.stringify({ 
-        total_users: totalUsers, 
-        active_users: activeUsers, 
-        expired_users: expiredUsers, 
-        total_traffic: totalTraffic 
-      }), { status: 200, headers: headers });
+      try {
+        const totalUsers = await env.DB.prepare("SELECT COUNT(*) as count FROM users").first('count');
+        const expiredQuery = await env.DB.prepare("SELECT COUNT(*) as count FROM users WHERE datetime(expiration_date || 'T' || expiration_time || 'Z') < datetime('now')").first();
+        const expiredUsers = expiredQuery?.count || 0;
+        const activeUsers = totalUsers - expiredUsers;
+        const totalTrafficQuery = await env.DB.prepare("SELECT SUM(traffic_used) as sum FROM users").first();
+        const totalTraffic = totalTrafficQuery?.sum || 0;
+        return new Response(JSON.stringify({ 
+          total_users: totalUsers, 
+          active_users: activeUsers, 
+          expired_users: expiredUsers, 
+          total_traffic: totalTraffic 
+        }), { status: 200, headers });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: e.message }), { status: 500, headers });
+      }
     }
 
     if (adminSubPath === '/api/users' && request.method === 'GET') {
-      var headers = new Headers(jsonHeader);
+      const headers = new Headers(jsonHeader);
       addSecurityHeaders(headers, null, {});
-      var results = env.DB.prepare("SELECT uuid, created_at, expiration_date, expiration_time, notes, traffic_limit, traffic_used, ip_limit FROM users ORDER BY created_at DESC").all().results;
-      return new Response(JSON.stringify(results || []), { status: 200, headers: headers });
+      try {
+        const { results } = await env.DB.prepare("SELECT uuid, created_at, expiration_date, expiration_time, notes, traffic_limit, traffic_used, ip_limit FROM users ORDER BY created_at DESC").all();
+        return new Response(JSON.stringify(results ?? []), { status: 200, headers });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: e.message }), { status: 500, headers });
+      }
     }
 
     if (adminSubPath === '/api/users' && request.method === 'POST') {
-      var headers = new Headers(jsonHeader);
+      const headers = new Headers(jsonHeader);
       addSecurityHeaders(headers, null, {});
-      var body = await request.json();
-      var uuid = body.uuid;
-      var expDate = body.exp_date;
-      var expTime = body.exp_time;
-      var notes = body.notes;
-      var traffic_limit = body.traffic_limit;
-      var ip_limit = body.ip_limit;
+      try {
+        const { uuid, exp_date: expDate, exp_time: expTime, notes, traffic_limit, ip_limit } = await request.json();
 
-      if (!uuid || !expDate || !expTime || !/^\d{4}-\d{2}-\d{2}$/.test(expDate) || !/^\d{2}:\d{2}:\d{2}$/.test(expTime)) {
-        throw new Error('Invalid or missing fields. Use UUID, YYYY-MM-DD, and HH:MM:SS.');
+        if (!uuid || !expDate || !expTime || !/^\d{4}-\d{2}-\d{2}$/.test(expDate) || !/^\d{2}:\d{2}:\d{2}$/.test(expTime)) {
+          throw new Error('Invalid or missing fields. Use UUID, YYYY-MM-DD, and HH:MM:SS.');
+        }
+
+        await env.DB.prepare("INSERT INTO users (uuid, expiration_date, expiration_time, notes, traffic_limit, ip_limit, traffic_used) VALUES (?, ?, ?, ?, ?, ?, 0)")
+          .bind(uuid, expDate, expTime, notes || null, traffic_limit, ip_limit || -1).run();
+        
+        ctx.waitUntil(kvPut(env.DB, `user:${uuid}`, { 
+          uuid,
+          expiration_date: expDate, 
+          expiration_time: expTime, 
+          notes: notes || null,
+          traffic_limit: traffic_limit, 
+          ip_limit: ip_limit || -1,
+          traffic_used: 0 
+        }, { expirationTtl: 3600 }));
+
+        return new Response(JSON.stringify({ success: true, uuid }), { status: 201, headers });
+      } catch (error) {
+        if (error.message?.includes('UNIQUE constraint failed')) {
+          return new Response(JSON.stringify({ error: 'A user with this UUID already exists.' }), { status: 409, headers });
+        }
+        return new Response(JSON.stringify({ error: error.message }), { status: 400, headers });
       }
-
-      env.DB.prepare("INSERT INTO users (uuid, expiration_date, expiration_time, notes, traffic_limit, ip_limit, traffic_used) VALUES (?, ?, ?, ?, ?, ?, 0)")
-        .bind(uuid, expDate, expTime, notes || null, traffic_limit, ip_limit || -1).run();
-      
-      ctx.waitUntil(kvPut(env.DB, "user:" + uuid, { 
-        uuid: uuid,
-        expiration_date: expDate, 
-        expiration_time: expTime, 
-        notes: notes || null,
-        traffic_limit: traffic_limit, 
-        ip_limit: ip_limit || -1,
-        traffic_used: 0 
-      }, { expirationTtl: 3600 }));
-
-      return new Response(JSON.stringify({ success: true, uuid: uuid }), { status: 201, headers: headers });
     }
 
     if (adminSubPath === '/api/users/bulk-delete' && request.method === 'POST') {
-      var headers = new Headers(jsonHeader);
+      const headers = new Headers(jsonHeader);
       addSecurityHeaders(headers, null, {});
-      var body = await request.json();
-      var uuids = body.uuids;
-      if (!Array.isArray(uuids) || uuids.length === 0) {
-        throw new Error('Invalid request body: Expected an array of UUIDs.');
+      try {
+        const { uuids } = await request.json();
+        if (!Array.isArray(uuids) || uuids.length === 0) {
+          throw new Error('Invalid request body: Expected an array of UUIDs.');
+        }
+
+        const deleteUserStmt = env.DB.prepare("DELETE FROM users WHERE uuid = ?");
+        const stmts = uuids.map(uuid => deleteUserStmt.bind(uuid));
+        await env.DB.batch(stmts);
+
+        ctx.waitUntil(Promise.all(uuids.map(uuid => kvDelete(env.DB, `user:${uuid}`))));
+
+        return new Response(JSON.stringify({ success: true, count: uuids.length }), { status: 200, headers });
+      } catch (error) {
+        return new Response(JSON.stringify({ error: error.message }), { status: 400, headers });
       }
-
-      var deleteUserStmt = env.DB.prepare("DELETE FROM users WHERE uuid = ?");
-      var stmts = uuids.map(function(uuid) { return deleteUserStmt.bind(uuid); });
-      env.DB.batch(stmts);
-
-      ctx.waitUntil(Promise.all(uuids.map(function(uuid) { return kvDelete(env.DB, "user:" + uuid); })));
-
-      return new Response(JSON.stringify({ success: true, count: uuids.length }), { status: 200, headers: headers });
     }
 
-    var userRouteMatch = adminSubPath.match(/^\/api\/users\/([a-f0-9-]+)$/);
+    const userRouteMatch = adminSubPath.match(/^\/api\/users\/([a-f0-9-]+)$/);
 
     if (userRouteMatch && request.method === 'PUT') {
-      var headers = new Headers(jsonHeader);
+      const headers = new Headers(jsonHeader);
       addSecurityHeaders(headers, null, {});
-      var uuid = userRouteMatch[1];
-      var body = await request.json();
-      var expDate = body.exp_date;
-      var expTime = body.exp_time;
-      var notes = body.notes;
-      var traffic_limit = body.traffic_limit;
-      var ip_limit = body.ip_limit;
-      var reset_traffic = body.reset_traffic;
-      if (!expDate || !expTime || !/^\d{4}-\d{2}-\d{2}$/.test(expDate) || !/^\d{2}:\d{2}:\d{2}$/.test(expTime)) {
-        throw new Error('Invalid date/time fields. Use YYYY-MM-DD and HH:MM:SS.');
+      const uuid = userRouteMatch[1];
+      try {
+        const { exp_date: expDate, exp_time: expTime, notes, traffic_limit, ip_limit, reset_traffic } = await request.json();
+        if (!expDate || !expTime || !/^\d{4}-\d{2}-\d{2}$/.test(expDate) || !/^\d{2}:\d{2}:\d{2}$/.test(expTime)) {
+          throw new Error('Invalid date/time fields. Use YYYY-MM-DD and HH:MM:SS.');
+        }
+
+        let query = "UPDATE users SET expiration_date = ?, expiration_time = ?, notes = ?, traffic_limit = ?, ip_limit = ?";
+        let binds = [expDate, expTime, notes || null, traffic_limit, ip_limit || -1];
+        
+        if (reset_traffic) {
+          query += ", traffic_used = 0";
+        }
+        
+        query += " WHERE uuid = ?";
+        binds.push(uuid);
+
+        await env.DB.prepare(query).bind(...binds).run();
+        
+        ctx.waitUntil(kvDelete(env.DB, `user:${uuid}`));
+
+        return new Response(JSON.stringify({ success: true, uuid }), { status: 200, headers });
+      } catch (error) {
+        return new Response(JSON.stringify({ error: error.message }), { status: 400, headers });
       }
-
-      var query = "UPDATE users SET expiration_date = ?, expiration_time = ?, notes = ?, traffic_limit = ?, ip_limit = ?";
-      var binds = [expDate, expTime, notes || null, traffic_limit, ip_limit || -1];
-      
-      if (reset_traffic) {
-        query += ", traffic_used = 0";
-      }
-      
-      query += " WHERE uuid = ?";
-      binds.push(uuid);
-
-      env.DB.prepare(query).bind.apply(null, binds).run();
-      
-      ctx.waitUntil(kvDelete(env.DB, "user:" + uuid));
-
-      return new Response(JSON.stringify({ success: true, uuid: uuid }), { status: 200, headers: headers });
     }
 
     if (userRouteMatch && request.method === 'DELETE') {
-      var headers = new Headers(jsonHeader);
+      const headers = new Headers(jsonHeader);
       addSecurityHeaders(headers, null, {});
-      var uuid = userRouteMatch[1];
-      env.DB.prepare("DELETE FROM users WHERE uuid = ?").bind(uuid).run();
-      ctx.waitUntil(kvDelete(env.DB, "user:" + uuid));
-      return new Response(JSON.stringify({ success: true, uuid: uuid }), { status: 200, headers: headers });
+      const uuid = userRouteMatch[1];
+      try {
+        await env.DB.prepare("DELETE FROM users WHERE uuid = ?").bind(uuid).run();
+        ctx.waitUntil(kvDelete(env.DB, `user:${uuid}`));
+        return new Response(JSON.stringify({ success: true, uuid }), { status: 200, headers });
+      } catch (error) {
+        return new Response(JSON.stringify({ error: error.message }), { status: 500, headers });
+      }
     }
 
     if (adminSubPath === '/api/logout' && request.method === 'POST') {
-      var headers = new Headers(jsonHeader);
+      const headers = new Headers(jsonHeader);
       addSecurityHeaders(headers, null, {});
-      kvDelete(env.DB, 'admin_session_token_hash');
-      var setCookie = [
-        'auth_token=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=Strict',
-        'csrf_token=; Max-Age=0; Path=/; Secure; SameSite=Strict'
-      ];
-      headers.append('Set-Cookie', setCookie[0]);
-      headers.append('Set-Cookie', setCookie[1]);
-      return new Response(JSON.stringify({ success: true }), { status: 200, headers: headers });
+      try {
+        await kvDelete(env.DB, 'admin_session_token_hash');
+        const setCookie = [
+          'auth_token=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=Strict',
+          'csrf_token=; Max-Age=0; Path=/; Secure; SameSite=Strict'
+        ];
+        headers.append('Set-Cookie', setCookie[0]);
+        headers.append('Set-Cookie', setCookie[1]);
+        return new Response(JSON.stringify({ success: true }), { status: 200, headers });
+      } catch (error) {
+        return new Response(JSON.stringify({ error: error.message }), { status: 500, headers });
+      }
     }
 
-    var headers = new Headers(jsonHeader);
+    const headers = new Headers(jsonHeader);
     addSecurityHeaders(headers, null, {});
-    return new Response(JSON.stringify({ error: 'API route not found' }), { status: 404, headers: headers });
+    return new Response(JSON.stringify({ error: 'API route not found' }), { status: 404, headers });
   }
 
   if (adminSubPath === '/') {
     
     if (request.method === 'POST') {
-      var rateLimitKey = "login_fail_ip:" + clientIp;
+      const rateLimitKey = `login_fail_ip:${clientIp}`;
       
-      var failCountStr = kvGet(env.DB, rateLimitKey);
-      var failCount = parseInt(failCountStr, 10) || 0;
+      try {
+        const failCountStr = await kvGet(env.DB, rateLimitKey);
+        const failCount = parseInt(failCountStr, 10) || 0;
         
-      if (failCount >= CONST.ADMIN_LOGIN_FAIL_LIMIT) {
-        addSecurityHeaders(htmlHeaders, null, {});
-        return new Response('Too many failed login attempts. Please try again later.', { status: 429, headers: htmlHeaders });
-      }
-        
-      var formData = await request.formData();
-        
-      if (timingSafeEqual(formData.get('password'), env.ADMIN_KEY)) {
-        if (env.ADMIN_TOTP_SECRET) {
-          var totpCode = formData.get('totp');
-          if (!validateTOTP(env.ADMIN_TOTP_SECRET, totpCode)) {
-            var nonce = generateNonce();
-            addSecurityHeaders(htmlHeaders, nonce, {});
-            var html = adminLoginHTML.replace('</form>', "</form><p class=\"error\">Invalid TOTP code. Attempt " + (failCount + 1) + " of " + CONST.ADMIN_LOGIN_FAIL_LIMIT + ".</p>");
-            html = html.replace(/CSP_NONCE_PLACEHOLDER/g, nonce);
-            html = html.replace('action="ADMIN_PATH_PLACEHOLDER"', "action=\"" + adminBasePath + "\"");
-            return new Response(html, { status: 401, headers: htmlHeaders });
-          }
+        if (failCount >= CONST.ADMIN_LOGIN_FAIL_LIMIT) {
+          addSecurityHeaders(htmlHeaders, null, {});
+          return new Response('Too many failed login attempts. Please try again later.', { status: 429, headers: htmlHeaders });
         }
-        var token = crypto.randomUUID();
-        var csrfToken = crypto.randomUUID();
-        var hashedToken = hashSHA256(token);
-        ctx.waitUntil(Promise.all([
-          kvPut(env.DB, 'admin_session_token_hash', hashedToken, { expirationTtl: 86400 }),
-          kvDelete(env.DB, rateLimitKey)
-        ]));
-          
-        var headers = new Headers({
-          'Location': adminBasePath,
-        });
-        headers.append('Set-Cookie', "auth_token=" + token + "; HttpOnly; Secure; Path=" + adminBasePath + "; Max-Age=86400; SameSite=Strict");
-        headers.append('Set-Cookie', "csrf_token=" + csrfToken + "; Secure; Path=" + adminBasePath + "; Max-Age=86400; SameSite=Strict");
-
-        addSecurityHeaders(headers, null, {});
-          
-        return new Response(null, { status: 302, headers: headers });
         
-      } else {
-        ctx.waitUntil(kvPut(env.DB, rateLimitKey, (failCount + 1).toString(), { expirationTtl: CONST.ADMIN_LOGIN_LOCK_TTL }));
+        const formData = await request.formData();
+        
+        if (timingSafeEqual(formData.get('password'), env.ADMIN_KEY)) {
+          if (env.ADMIN_TOTP_SECRET) {
+            const totpCode = formData.get('totp');
+            if (!(await validateTOTP(env.ADMIN_TOTP_SECRET, totpCode))) {
+              const nonce = generateNonce();
+              addSecurityHeaders(htmlHeaders, nonce, {});
+              let html = adminLoginHTML.replace('</form>', `</form><p class="error">Invalid TOTP code. Attempt ${failCount + 1} of ${CONST.ADMIN_LOGIN_FAIL_LIMIT}.</p>`);
+              html = html.replace(/CSP_NONCE_PLACEHOLDER/g, nonce);
+              html = html.replace('action="ADMIN_PATH_PLACEHOLDER"', `action="${adminBasePath}"`);
+              return new Response(html, { status: 401, headers: htmlHeaders });
+            }
+          }
+          const token = crypto.randomUUID();
+          const csrfToken = crypto.randomUUID();
+          const hashedToken = await hashSHA256(token);
+          ctx.waitUntil(Promise.all([
+            kvPut(env.DB, 'admin_session_token_hash', hashedToken, { expirationTtl: 86400 }),
+            kvDelete(env.DB, rateLimitKey)
+          ]));
           
-        var nonce = generateNonce();
-        addSecurityHeaders(htmlHeaders, nonce, {});
-        var html = adminLoginHTML.replace('</form>', "</form><p class=\"error\">Invalid password. Attempt " + (failCount + 1) + " of " + CONST.ADMIN_LOGIN_FAIL_LIMIT + ".</p>");
-        html = html.replace(/CSP_NONCE_PLACEHOLDER/g, nonce);
-        html = html.replace('action="ADMIN_PATH_PLACEHOLDER"', "action=\"" + adminBasePath + "\"");
-        return new Response(html, { status: 401, headers: htmlHeaders });
+          const headers = new Headers({
+            'Location': adminBasePath,
+          });
+          headers.append('Set-Cookie', `auth_token=${token}; HttpOnly; Secure; Path=${adminBasePath}; Max-Age=86400; SameSite=Strict`);
+          headers.append('Set-Cookie', `csrf_token=${csrfToken}; Secure; Path=${adminBasePath}; Max-Age=86400; SameSite=Strict`);
+
+          addSecurityHeaders(headers, null, {});
+          
+          return new Response(null, { status: 302, headers });
+        
+        } else {
+          ctx.waitUntil(kvPut(env.DB, rateLimitKey, (failCount + 1).toString(), { expirationTtl: CONST.ADMIN_LOGIN_LOCK_TTL }));
+          
+          const nonce = generateNonce();
+          addSecurityHeaders(htmlHeaders, nonce, {});
+          let html = adminLoginHTML.replace('</form>', `</form><p class="error">Invalid password. Attempt ${failCount + 1} of ${CONST.ADMIN_LOGIN_FAIL_LIMIT}.</p>`);
+          html = html.replace(/CSP_NONCE_PLACEHOLDER/g, nonce);
+          html = html.replace('action="ADMIN_PATH_PLACEHOLDER"', `action="${adminBasePath}"`);
+          return new Response(html, { status: 401, headers: htmlHeaders });
+        }
+      } catch (e) {
+        console.error("Admin login error:", e.stack);
+        addSecurityHeaders(htmlHeaders, null, {});
+        return new Response('An internal error occurred during login.', { status: 500, headers: htmlHeaders });
       }
     }
 
     if (request.method === 'GET') {
-      var nonce = generateNonce();
+      const nonce = generateNonce();
       addSecurityHeaders(htmlHeaders, nonce, {});
       
-      var html;
-      if (isAdmin(request, env)) {
+      let html;
+      if (await isAdmin(request, env)) {
         html = adminPanelHTML;
-        html = html.replace("'ADMIN_API_BASE_PATH_PLACEHOLDER'", "'" + adminBasePath + "/api'");
+        html = html.replace("'ADMIN_API_BASE_PATH_PLACEHOLDER'", `'${adminBasePath}/api'`);
       } else {
         html = adminLoginHTML;
-        html = html.replace('action="ADMIN_PATH_PLACEHOLDER"', "action=\"" + adminBasePath + "\"");
+        html = html.replace('action="ADMIN_PATH_PLACEHOLDER"', `action="${adminBasePath}"`);
       }
       
       html = html.replace(/CSP_NONCE_PLACEHOLDER/g, nonce);
       return new Response(html, { headers: htmlHeaders });
     }
 
-    var headers = new Headers();
+    const headers = new Headers();
     addSecurityHeaders(headers, null, {});
-    return new Response('Method Not Allowed', { status: 405, headers: headers });
+    return new Response('Method Not Allowed', { status: 405, headers });
   }
 
-  var headers = new Headers();
+  const headers = new Headers();
   addSecurityHeaders(headers, null, {});
-  return new Response('Not found', { status: 404, headers: headers });
+  return new Response('Not found', { status: 404, headers });
 }
 
 // ============================================================================
 // USER PANEL - UNIVERSAL QR CODE WITH MULTIPLE FALLBACK METHODS (with auto-refresh enhancements)
 // ============================================================================
 
-function resolveProxyIP(proxyHost) {
-  var ipv4Regex = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/;
-  var ipv6Regex = /^\[?[0-9a-fA-F:]+\]?$/;
+async function resolveProxyIP(proxyHost) {
+  const ipv4Regex = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/;
+  const ipv6Regex = /^\[?[0-9a-fA-F:]+\]?$/;
 
   if (ipv4Regex.test(proxyHost) || ipv6Regex.test(proxyHost)) {
     return proxyHost;
   }
 
-  var dnsAPIs = [
-    { url: "https://cloudflare-dns.com/dns-query?name=" + encodeURIComponent(proxyHost) + "&type=A", parse: function(data) { return data.Answer ? data.Answer.find(function(a) { return a.type === 1; }).data : null; } },
-    { url: "https://dns.google/resolve?name=" + encodeURIComponent(proxyHost) + "&type=A", parse: function(data) { return data.Answer ? data.Answer.find(function(a) { return a.type === 1; }).data : null; } },
-    { url: "https://1.1.1.1/dns-query?name=" + encodeURIComponent(proxyHost) + "&type=A", parse: function(data) { return data.Answer ? data.Answer.find(function(a) { return a.type === 1; }).data : null; } }
+  const dnsAPIs = [
+    { url: `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(proxyHost)}&type=A`, parse: data => data.Answer?.find(a => a.type === 1)?.data },
+    { url: `https://dns.google/resolve?name=${encodeURIComponent(proxyHost)}&type=A`, parse: data => data.Answer?.find(a => a.type === 1)?.data },
+    { url: `https://1.1.1.1/dns-query?name=${encodeURIComponent(proxyHost)}&type=A`, parse: data => data.Answer?.find(a => a.type === 1)?.data }
   ];
 
-  for (var i = 0; i < dnsAPIs.length; i++) {
-    var api = dnsAPIs[i];
+  for (const api of dnsAPIs) {
     try {
-      var response = fetch(api.url, { headers: { 'accept': 'application/dns-json' } });
+      const response = await fetch(api.url, { headers: { 'accept': 'application/dns-json' } });
       if (response.ok) {
-        var data = response.json();
-        var ip = api.parse(data);
+        const data = await response.json();
+        const ip = api.parse(data);
         if (ip && ipv4Regex.test(ip)) return ip;
       }
     } catch (e) {
@@ -1672,23 +1675,22 @@ function resolveProxyIP(proxyHost) {
   return proxyHost; // Fallback to host if resolution fails
 }
 
-function getGeo(ip) {
-  var geoAPIs = [
-    { url: "https://ipapi.co/" + ip + "/json/", parse: function(data) { return { city: data.city || '', country: data.country_name || '', isp: data.org || '' }; } },
-    { url: "https://ip-api.com/json/" + ip + "?fields=status,message,city,country,isp", parse: function(data) { return data.status !== 'fail' ? { city: data.city || '', country: data.country || '', isp: data.isp || '' } : null; } },
-    { url: "https://ipwho.is/" + ip, parse: function(data) { return data.success ? { city: data.city || '', country: data.country || '', isp: data.connection ? data.connection.isp : '' } : null; } },
-    { url: "https://freegeoip.app/json/" + ip, parse: function(data) { return { city: data.city || '', country: data.country_name || '', isp: '' }; } },
-    { url: "https://ipapi.is/" + ip + ".json", parse: function(data) { return { city: data.location ? data.location.city : '', country: data.location ? data.location.country : '', isp: data.asn ? data.asn.org : '' }; } },
-    { url: "https://freeipapi.com/api/json/" + ip, parse: function(data) { return { city: data.cityName || '', country: data.countryName || '', isp: '' }; } }
+async function getGeo(ip) {
+  const geoAPIs = [
+    { url: `https://ipapi.co/${ip}/json/`, parse: data => ({ city: data.city || '', country: data.country_name || '', isp: data.org || '' }) },
+    { url: `https://ip-api.com/json/${ip}?fields=status,message,city,country,isp`, parse: data => data.status !== 'fail' ? ({ city: data.city || '', country: data.country || '', isp: data.isp || '' }) : null },
+    { url: `https://ipwho.is/${ip}`, parse: data => data.success ? ({ city: data.city || '', country: data.country || '', isp: data.connection?.isp || '' }) : null },
+    { url: `https://freegeoip.app/json/${ip}`, parse: data => ({ city: data.city || '', country: data.country_name || '', isp: '' }) },
+    { url: `https://ipapi.is/${ip}.json`, parse: data => ({ city: data.location?.city || '', country: data.location?.country || '', isp: data.asn?.org || '' }) },
+    { url: `https://freeipapi.com/api/json/${ip}`, parse: data => ({ city: data.cityName || '', country: data.countryName || '', isp: '' }) }
   ];
 
-  for (var i = 0; i < geoAPIs.length; i++) {
-    var api = geoAPIs[i];
+  for (const api of geoAPIs) {
     try {
-      var response = fetch(api.url);
+      const response = await fetch(api.url);
       if (response.ok) {
-        var data = response.json();
-        var geo = api.parse(data);
+        const data = await response.json();
+        const geo = api.parse(data);
         if (geo && (geo.city || geo.country)) return geo;
       }
     } catch (e) {
@@ -1699,36 +1701,36 @@ function getGeo(ip) {
 }
 
 function handleUserPanel(userID, hostName, proxyAddress, userData) {
-  var subXrayUrl = "https://" + hostName + "/xray/" + userID;
-  var subSbUrl = "https://" + hostName + "/sb/" + userID;
+  const subXrayUrl = `https://${hostName}/xray/${userID}`;
+  const subSbUrl = `https://${hostName}/sb/${userID}`;
   
-  var singleXrayConfig = buildLink({ 
-    core: 'xray', proto: 'tls', userID: userID, hostName: hostName, address: hostName, port: 443, tag: 'Main'  });
+  const singleXrayConfig = buildLink({ 
+    core:'xray', proto: 'tls', userID, hostName, address: hostName, port: 443, tag: 'Main'  });
   
-  var singleSingboxConfig = buildLink({ 
-    core: 'sb', proto: 'tls', userID: userID, hostName: hostName, address: hostName, port: 443, tag: 'Main'
+  const singleSingboxConfig = buildLink({ 
+    core: 'sb', proto: 'tls', userID, hostName, address: hostName, port: 443, tag: 'Main'
   });
 
-  var clientUrls = {
-    universalAndroid: "v2rayng://install-config?url=" + encodeURIComponent(subXrayUrl),
-    windows: "clash://install-config?url=" + encodeURIComponent(subSbUrl),
-    macos: "clash://install-config?url=" + encodeURIComponent(subSbUrl),
-    karing: "karing://install-config?url=" + encodeURIComponent(subXrayUrl),
-    shadowrocket: "shadowrocket://add/sub?url=" + encodeURIComponent(subXrayUrl) + "&name=" + encodeURIComponent(hostName),
-    streisand: "streisand://install-config?url=" + encodeURIComponent(subXrayUrl)
+  const clientUrls = {
+    universalAndroid: `v2rayng://install-config?url=${encodeURIComponent(subXrayUrl)}`,
+    windows: `clash://install-config?url=${encodeURIComponent(subSbUrl)}`,
+    macos: `clash://install-config?url=${encodeURIComponent(subSbUrl)}`,
+    karing: `karing://install-config?url=${encodeURIComponent(subXrayUrl)}`,
+    shadowrocket: `shadowrocket://add/sub?url=${encodeURIComponent(subXrayUrl)}&name=${encodeURIComponent(hostName)}`,
+    streisand: `streisand://install-config?url=${encodeURIComponent(subXrayUrl)}`
   };
 
-  var isUserExpired = isExpired(userData.expiration_date, userData.expiration_time);
-  var expirationDateTime = userData.expiration_date && userData.expiration_time 
-    ? userData.expiration_date + "T" + userData.expiration_time + "Z" 
+  const isUserExpired = isExpired(userData.expiration_date, userData.expiration_time);
+  const expirationDateTime = userData.expiration_date && userData.expiration_time 
+    ? `${userData.expiration_date}T${userData.expiration_time}Z` 
     : null;
 
-  var usagePercentage = 0;
+  let usagePercentage = 0;
   if (userData.traffic_limit && userData.traffic_limit > 0) {
     usagePercentage = Math.min(((userData.traffic_used || 0) / userData.traffic_limit) * 100, 100);
   }
 
-  var usagePercentageDisplay;
+  let usagePercentageDisplay;
   if (usagePercentage > 0 && usagePercentage < 0.01) {
     usagePercentageDisplay = '< 0.01%';
   } else if (usagePercentage === 0) {
@@ -1736,21 +1738,21 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
   } else if (usagePercentage === 100) {
     usagePercentageDisplay = '100%';
   } else {
-    usagePercentageDisplay = usagePercentage.toFixed(2) + '%';
+    usagePercentageDisplay = `${usagePercentage.toFixed(2)}%`;
   }
 
   // Server-side geo detection
-  var proxyHost = proxyAddress.split(':')[0];
-  var proxyIP = resolveProxyIP(proxyHost);
-  var clientIp = request.headers.get('CF-Connecting-IP');
-  var clientGeo = getGeo(clientIp);
-  var proxyGeo = getGeo(proxyIP);
+  const proxyHost = proxyAddress.split(':')[0];
+  const proxyIP = await resolveProxyIP(proxyHost);
+  const clientIp = request.headers.get('CF-Connecting-IP');
+  const clientGeo = await getGeo(clientIp);
+  const proxyGeo = await getGeo(proxyIP);
 
-  var clientLocation = clientGeo ? [clientGeo.city, clientGeo.country].filter(Boolean).join(', ') : 'Detection failed';
-  var clientIsp = clientGeo ? clientGeo.isp : 'Detection failed';
-  var proxyLocation = proxyGeo ? [proxyGeo.city, proxyGeo.country].filter(Boolean).join(', ') : 'Detection failed';
+  const clientLocation = clientGeo ? [clientGeo.city, clientGeo.country].filter(Boolean).join(', ') : 'Detection failed';
+  const clientIsp = clientGeo ? clientGeo.isp : 'Detection failed';
+  const proxyLocation = proxyGeo ? [proxyGeo.city, proxyGeo.country].filter(Boolean).join(', ') : 'Detection failed';
 
-  var userPanelHTML = [
+  const userPanelHTML = [
   '<!doctype html>',
   '<html lang="en">',
   '<head>',
@@ -1882,22 +1884,23 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
   '      </div>',
   '    </div>',
   '',
-  ((userData.traffic_limit && userData.traffic_limit > 0) ? 
+  (userData.traffic_limit && userData.traffic_limit > 0 ? 
   '    <div class="card">' +
   '      <div class="section-title">' +
   '        <h2>📊 Usage Statistics</h2>' +
   '        <span class="muted">' + usagePercentageDisplay + ' Used</span>' +
   '      </div>' +
   '      <div class="progress-bar">' +
-  '        <div class="progress-fill ' + (usagePercentage > 80 ? 'high' : (usagePercentage > 50 ? 'medium' : 'low')) + '" ' +
+  '        <div class="progress-fill ' + (usagePercentage > 80 ? 'high' : usagePercentage > 50 ? 'medium' : 'low') + '" ' +
   '             id="progress-bar-fill"' +
   '             style="width: 0%"' +
   '             data-target-width="' + usagePercentage.toFixed(2) + '"></div>' +
   '      </div>' +
   '      <p class="muted text-center mb-2">' + formatBytes(userData.traffic_used || 0) + ' of ' + formatBytes(userData.traffic_limit) + ' used</p>' +
-  '    </div>' : ''),
+  '    </div>'
+  : '') ,
 
-  ((expirationDateTime) ? 
+  (expirationDateTime ? 
   '    <div class="card">' +
   '      <div class="section-title">' +
   '        <h2>⏰ Expiration Information</h2>' +
@@ -1906,15 +1909,17 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
   '        <p class="muted" id="expiry-local">Loading expiration time...</p>' +
   '        <p class="muted" id="expiry-utc" style="font-size:13px;margin-top:4px"></p>' +
   '      </div>' +
- ((isUserExpired) ? 
+  (isUserExpired ? 
   '      <div class="expiry-warning">' +
   '        ⚠️ Your account has expired. Please contact your administrator to renew access.' +
-  '      </div>' : 
+  '      </div>'
+  : 
   '      <div class="expiry-info">' +
   '        ✓ Your account is currently active and working normally.' +
   '      </div>'
   ) +
-  '    </div>' : ''),
+  '    </div>'
+  : '') ,
 
   '    <div class="grid">',
   '      <div>',
@@ -2015,11 +2020,12 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
   '            <span class="label">Created Date</span>',
   '            <span class="value">' + new Date(userData.created_at).toLocaleDateString() + '</span>',
   '          </div>',
- ((userData.notes) ? 
+ (userData.notes ? 
   '          <div class="info-item" style="margin-top:12px">' +
   '            <span class="label">Notes</span>' +
   '            <span class="value">' + escapeHTML(userData.notes) + '</span>' +
-  '          </div>' : ''),
+  '          </div>'
+  : '') ,
   '          <div class="info-item" style="margin-top:12px">',
   '            <span class="label">IP Limit</span>',
   '            <span class="value">' + (userData.ip_limit === -1 ? 'Unlimited' : userData.ip_limit) + '</span>',
@@ -2063,76 +2069,1056 @@ function handleUserPanel(userID, hostName, proxyAddress, userData) {
   '      initialTrafficUsed: ' + (userData.traffic_used || 0) + '',
   '    };',
   '',
-  '    window.formatBytes = formatBytes;',
-  '    window.generateQRCode = generateQRCode;',
-  '    window.showToast = showToast;',
-  '    window.copyToClipboard = copyToClipboard;',
-  '    window.downloadConfig = downloadConfig;',
-  '    window.fetchIPInfo = fetchIPInfo;',
-  '    window.updateExpirationDisplay = updateExpirationDisplay;',
-  '    window.animateProgressBar = animateProgressBar;',
-  '    window.refreshUserPanel = refreshUserPanel;',
-  '    window.startUserAutoRefresh = startUserAutoRefresh;',
+  '    function formatBytes(bytes) {',
+  '      if (bytes === 0) return \'0 Bytes\';',
+  '      const k = 1024;',
+  '      const sizes = [\'Bytes\', \'KB\', \'MB\', \'GB\', \'TB\'];',
+  '      const i = Math.floor(Math.log(bytes) / Math.log(k));',
+  '      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + \' \' + sizes[i];',
+  '    }',
+  '',
+  'var QRCode=function(){"use strict";function e(e){this.mode=c.MODE_8BIT_BYTE,this.data=e,this.parsedData=[];for(var t=0,r=this.data.length;t<r;t++){var o=[],a=this.data.charCodeAt(t);a>65535?(o[0]=240|(a&1835008)>>>18,o[1]=128|(a&258048)>>>12,o[2]=128|(a&4032)>>>6,o[3]=128|a&63):a>2047?(o[0]=224|(a&61440)>>>12,o[1]=128|(a&4032)>>>6,o[2]=128|a&63):a>127?(o[0]=192|(a&1984)>>>6,o[1]=128|a&63):(o[0]=a),this.parsedData.push(o)}this.parsedData=Array.prototype.concat.apply([],this.parsedData),this.parsedData.length!=this.data.length&&(this.parsedData.unshift(191),this.parsedData.unshift(187),this.parsedData.unshift(239))}function t(e,t){this.typeNumber=e,this.errorCorrectLevel=t,this.modules=null,this.moduleCount=0,this.dataCache=null,this.dataList=[]}e.prototype={getLength:function(e){return this.parsedData.length},write:function(e){for(var t=0,r=this.parsedData.length;t<r;t++)e.put(this.parsedData[t],8)}}e.prototype.addData=function(e){var t=new e(e);this.dataList.push(t),this.dataCache=null},t.prototype.isDark=function(e,t){if(e<0||this.moduleCount<=e||t<0||this.moduleCount<=t)throw new Error(e+","+t);return this.modules[e][t]},t.prototype.getModuleCount=function(){return this.moduleCount},t.prototype.make=function(){this.makeImpl(!1,this.getBestMaskPattern())},t.prototype.makeImpl=function(e,t){this.moduleCount=4*this.typeNumber+17,this.modules=new Array(this.moduleCount);for(var r=0;r<this.moduleCount;r++){this.modules[r]=new Array(this.moduleCount);for(var o=0;o<this.moduleCount;o++)this.modules[r][o]=null}this.setupPositionProbePattern(0,0),this.setupPositionProbePattern(this.moduleCount-7,0),this.setupPositionProbePattern(0,this.moduleCount-7),this.setupPositionAdjustPattern(),this.setupTimingPattern(),this.setupTypeInfo(e,t),this.typeNumber>=7&&this.setupTypeNumber(e),null==this.dataCache&&(this.dataCache=t.createData(this.typeNumber,this.errorCorrectLevel,this.dataList)),this.mapData(this.dataCache,t)} ,t.prototype.setupPositionProbePattern=function(e,t){for(var r=e-1;r<=e+7;r++)if(!(r<0||this.moduleCount<=r))for(var o=t-1;o<=t+7;o++)o<0||this.moduleCount<=o||(r==e&&o==t||r==e+6&&o==t||r==e&&o==t+6||r==e+6&&o==t+6||r==e+2&&o==t+2||r==e+3&&o==t+2||r==e+4&&o==t+2||r==e+2&&o==t+3||r==e+3&&o==t+3||r==e+4&&o==t+3||r==e+2&&o==t+4||r==e+3&&o==t+4||r==e+4&&o==t+4?this.modules[r][o]=!1:this.modules[r][o]=!0)},t.prototype.setupPositionAdjustPattern=function(){for(var e=c.getPatternPosition(this.typeNumber),t=0;t<e.length;t++)for(var r=0;r<e.length;r++)if(t!=r||this.typeNumber>=7){var o=e[t],a=e[r];if(null==this.modules[o][a]){this.modules[o][a]=!0,this.modules[o-1][a]=!0,this.modules[o+1][a]=!0,this.modules[o][a-1]=!0,this.modules[o][a+1]=!0,this.modules[o-2][a-2]=!0,this.modules[o-2][a-1]=!0,this.modules[o-2][a]=!0,this.modules[o-2][a+1]=!0,this.modules[o-2][a+2]=!0,this.modules[o-1][a-2]=!0,this.modules[o-1][a+2]=!0,this.modules[o][a-2]=!0,this.modules[o][a+2]=!0,this.modules[o+1][a-2]=!0,this.modules[o+1][a+2]=!0,this.modules[o+2][a-2]=!0,this.modules[o+2][a-1]=!0,this.modules[o+2][a]=!0,this.modules[o+2][a+1]=!0,this.modules[o+2][a+2]=!0}}},t.prototype.setupTimingPattern=function(){for(var e=8;e<this.moduleCount-8;e++)null==this.modules[e][6]&&(this.modules[e][6]=e%2==0);for(var t=8;t<this.moduleCount-8;t++)null==this.modules[6][t]&&(this.modules[6][t]=t%2==0)},t.prototype.setupTypeNumber=function(e){for(var t=c.getBCHTypeNumber(this.typeNumber),r=0;r<18;r++){var o=!e&&1==(t>>r&1);this.modules[Math.floor(r/3)][r%3+this.moduleCount-8-3]=o}for(var r=0;r<18;r++){var o=!e&&1==(t>>r&1);this.modules[r%3+this.moduleCount-8-3][Math.floor(r/3)]=o}},t.prototype.setupTypeInfo=function(e,t){for(var r=this.errorCorrectLevel<<3|t,o=c.getBCHTypeInfo(r),a=0;a<15;a++){var i=!e&&1==(o>>a&1);a<6?this.modules[a][8]=i:a<8?this.modules[a+1][8]=i:this.modules[this.moduleCount-15+a][8]=i}for(var a=0;a<15;a++){var i=!e&&1==(o>>a&1);a<8?this.modules[8][this.moduleCount-a-1]=i:a<9?this.modules[8][15-a-1+1]=i:this.modules[8][15-a-1]=i}this.modules[this.moduleCount-8][8]=!e},t.prototype.mapData=function(e,t){for(var r=-1,o=this.moduleCount-1,a=7,i=0,n=this.moduleCount-1;n>0;n-=2)for(6==n&&n--; ; ){for(var s=0;s<2;s++)if(null==this.modules[o][n-s]){var u=!1;i<e.length&&(u=1==(e[i]>>>a&1)),c.getMask(t,o,n-s)&&(u=!u),this.modules[o][n-s]=u,a--,-1==a&&(i++,a=7)}if(o+=r,o<0||this.moduleCount<=o){o-=r,r=-r;break}}},t.PAD0=236,t.PAD1=17,t.createData=function(r,o,a){var i=c.getRSBlocks(r,o),n=new t;for(var s=0;s<a.length;s++){var u=a[s];n.addData(u.mode,u.getLength(),u),n.put(u.mode,4),n.put(u.getLength(),c.getLengthInBits(u.mode,r)),u.write(n)}var l=0;for(s=0;s<i.length;s++)l+=i[s].dataCount;for(s=0;s<n.getBuffer().length;s++)n.put(n.getBuffer()[s],8);var h=(l-n.getLengthInBits()/8)*8;n.put(0,4),n.put(h,c.getLengthInBits(4,r));for(var p=0;p<h/8;p++)n.put(t.PAD0,8);for(var d=0;d<i.length;d++){var f=i[d];for(p=0;p<f.totalCount-f.dataCount;p++)n.put(0,8)}var m=e.getErrorCorrectPolynomial(f.dataCount);for(p=0;p<f.dataCount;p++){var g=n.getBuffer()[p*f.dataCount+p];n.put(g,8)}var b=new Array(f.dataCount);for(p=0;p<f.dataCount;p++){var v=n.getBuffer()[p];b[p]=v&255;for(var y=0;y<m.getLength()-1;y++)b[p]^=e.gexp(e.glog[b[p]]+m.get(y))}for(p=0;p<f.dataCount;p++)n.put(b[p],8);return n.getBuffer()},t.createBytes=function(t,r){for(var o=0,a=0,i=0,n=new Array(r.length),s=new Array(r.length),u=0;u<r.length;u++){var l=r[u].dataCount,h=r[u].totalCount-l;a=Math.max(a,l),i=Math.max(i,h),n[u]=new Array(l);for(var p=0;p<l;p++)n[u][p]=255&t.buffer[p+o];o+=l;var d=c.getErrorCorrectPolynomial(h),f=(new e(n[u],d.getLength()-1)).mod(d);s[u]=new Array(d.getLength()-1);for(var p=0;p<s[u].length;p++){var m=p+f.getLength()-s[u].length;s[u][p]=m>=0?f.get(m):0}}for(var g=0,p=0;p<r.length;p++)g+=r[p].totalCount;for(var b=new Array(g),v=0,p=0;p<a;p++)for(var u=0;u<r.length;u++)p<n[u].length&&(b[v++]=n[u][p]);for(var p=0;p<i;p++)for(var u=0;u<r.length;u++)p<s[u].length&&(b[v++]=s[u][p]);return b};var r={MODE_NUMBER:1,MODE_ALPHA_NUM:2,MODE_8BIT_BYTE:4,MODE_KANJI:8},o={L:1,M:0,Q:3,H:2},a={PATTERN000:0,PATTERN001:1,PATTERN010:2,PATTERN011:3,PATTERN100:4,PATTERN101:5,PATTERN110:6,PATTERN111:7},c={PATTERN_POSITION_TABLE:[[],[6,18],[6,22],[6,26],[6,30],[6,34],[6,22,38],[6,24,42],[6,26,46],[6,28,50],[6,30,54],[6,32,58],[6,34,62],[6,26,46,66],[6,26,48,70],[6,26,50,74],[6,30,54,78],[6,30,56,82],[6,30,58,86],[6,34,62,90],[6,28,50,72,94],[6,26,50,74,98],[6,30,54,78,102],[6,28,54,80,106],[6,32,58,84,110],[6,30,58,86,114],[6,34,62,90,118],[6,26,50,74,98,122],[6,30,54,78,102,126],[6,26,52,78,104,130],[6,30,56,82,108,134],[6,34,60,86,112,138],[6,30,58,86,114,142],[6,34,62,90,118,146],[6,30,54,78,102,126,150],[6,24,50,76,102,128,154],[6,28,54,80,106,132,158],[6,32,58,84,110,136,162],[6,26,54,82,110,138,166],[6,30,58,86,114,142,170]],G15:1335,G18:7973,G15_MASK:21522,getBCHTypeInfo:function(e){for(var t=e<<10;c.getBCHDigit(t)-c.getBCHDigit(c.G15)>=0;)t^=c.G15<<c.getBCHDigit(t)-c.getBCHDigit(c.G15);return(e<<10|t)^c.G15_MASK},getBCHTypeNumber:function(e){for(var t=e<<12;c.getBCHDigit(t)-c.getBCHDigit(c.G18)>=0;)t^=c.G18<<c.getBCHDigit(t)-c.getBCHDigit(c.G18);return e<<12|t},getBCHDigit:function(e){for(var t=0;0!=e;)t++,e>>>=1;return t},getPatternPosition:function(e){return c.PATTERN_POSITION_TABLE[e-1]},getMask:function(e,t,r){switch(e){case a.PATTERN000:return(t+r)%2==0;case a.PATTERN001:return t%2==0;case a.PATTERN010:return r%3==0;case a.PATTERN011:return(t+r)%3==0;case a.PATTERN100:return(Math.floor(t/2)+Math.floor(r/3))%2==0;case a.PATTERN101:return t*r%2+t*r%3==0;case a.PATTERN110:return(t*r%2+t*r%3)%2==0;case a.PATTERN111:return(t*r%3+(t+r)%2)%2==0;default:throw new Error("bad maskPattern:"+e)}},getErrorCorrectPolynomial:function(t){for(var r=new e([1],0),o=0;o<t;o++)r=r.multiply(new e([1,c.gexp(o)],0));return r},getLengthInBits:function(e,t){if(1<=t&&t<10)switch(e){case r.MODE_NUMBER:return 10;case r.MODE_ALPHA_NUM:return 9;case r.MODE_8BIT_BYTE:return 8;case r.MODE_KANJI:return 8;default:throw new Error("mode:"+e)}else if(t<27)switch(e){case r.MODE_NUMBER:return 12;case r.MODE_ALPHA_NUM:return 11;case r.MODE_8BIT_BYTE:return 16;case r.MODE_KANJI:return 10;default:throw new Error("mode:"+e)}else{if(!(t<41))throw new Error("type:"+t);switch(e){case r.MODE_NUMBER:return 14;case r.MODE_ALPHA_NUM:return 13;case r.MODE_8BIT_BYTE:return 16;case r.MODE_KANJI:return 12;default:throw new Error("mode:"+e)}}},gexp:function(e){for(;e<0;)e+=255;for(;e>=256;)e-=255;return c.EXP_TABLE[e]},glog:function(e){if(e<1)throw new Error("glog("+e+")");return c.LOG_TABLE[e]},getRSBlocks:function(e,t){switch(t){case o.L:return c.RS_BLOCK_TABLE[4*(e-1)+0];case o.M:return c.RS_BLOCK_TABLE[4*(e-1)+1];case o.Q:return c.RS_BLOCK_TABLE[4*(e-1)+2];case o.H:return c.RS_BLOCK_TABLE[4*(e-1)+3];default:throw new Error("bad rs block @ typeNumber: "+e+"/errorCorrectLevel: "+t)}};c.EXP_TABLE=new Array(256);for(var i=0;i<8;i++)c.EXP_TABLE[i]=1<<i;for(var i=8;i<256;i++)c.EXP_TABLE[i]=c.EXP_TABLE[i-4]^c.EXP_TABLE[i-5]^c.EXP_TABLE[i-6]^c.EXP_TABLE[i-8];c.LOG_TABLE=new Array(256);for(var i=0;i<255;i++)c.LOG_TABLE[c.EXP_TABLE[i]]=i;var n={create:function(e){if(void 0==e||""==e)return new n;var r=new t(1,o.H,[new e(e)]);return r},toCanvas:function(t,r,o,a,i){var s=n.create(r);if(t.nodeName.toUpperCase()=="CANVAS"){var u=t}else{var u=document.createElement("canvas");t.appendChild(u)}o&&(u.style.width=o,u.style.height=o);var l=s.getModuleCount(),h=o?o/l:a?a:Math.max(1,Math.floor(l/100)),p=Math.floor(l*h),d=Math.floor((p-l*h)/2);u.width=p,u.height=p;var f=u.getContext("2d");f.clearRect(0,0,p,p),i&&f.fillStyle=i,f.fillRect(0,0,p,p),f.fillStyle="#000000";for(var m=0;m<l;m++)for(var g=0;g<l;g++)s.isDark(m,g)&&f.fillRect(Math.floor(m*h)+d,Math.floor(g*h)+d,h,h);return u},toDataURL:function(e,t,r){var o=n.create(e).getModuleCount(),a=document.createElement("canvas");a.width=o,a.height=o;var i=a.getContext("2d");i.fillStyle=t?t:"#FFFFFF",i.fillRect(0,0,o,o),i.fillStyle=r?r:"#000000";for(var s=0;s<o;s++)for(var u=0;u<o;u++)n.isDark(s,u)&&i.fillRect(s,u,1,1);return a.toDataURL("image/png")}};return n}();',
+  '',
+  '    // =========================================',
+  '    // UNIVERSAL QR CODE GENERATION',
+  '    // Multiple fallback methods for cross-browser compatibility',
+  '    // Works in Chrome, Firefox, Safari, Edge, and all mobile browsers',
+  '    // =========================================',
+  '    ',
+  '    const QRGenerator = {',
+  '      libraryLoaded: false,',
+  '      checkInterval: null,',
+  '      maxAttempts: 50,',
+  '      attempts: 0,',
+  '',
+  '      async waitForLibrary() {',
+  '        return new Promise((resolve, reject) => {',
+  '          if (typeof QRCode !== \'undefined\') {',
+  '            this.libraryLoaded = true;',
+  '            resolve(true);',
+  '            return;',
+  '          }',
+  '',
+  '          this.attempts = 0;',
+  '          this.checkInterval = setInterval(() => {',
+  '            this.attempts++;',
+  '            ',
+  '            if (typeof QRCode !== \'undefined\') {',
+  '              clearInterval(this.checkInterval);',
+  '              this.libraryLoaded = true;',
+  '              console.log(\'✓ QR Code library loaded successfully\');',
+  '              resolve(true);',
+  '            } else if (this.attempts >= this.maxAttempts) {',
+  '              clearInterval(this.checkInterval);',
+  '              console.warn(\'⚠️ QR Code library loading timeout - will use fallback method\');',
+  '              resolve(false);',
+  '            }',
+  '          }, 100);',
+  '        });',
+  '      },',
+  '',
+  '      async generateWithLibrary(text, container) {',
+  '        try {',
+  '          let loaded = this.libraryLoaded;',
+  '          if (!loaded) {',
+  '            loaded = await this.waitForLibrary();',
+  '          }',
+  '          if (!loaded) {',
+  '            throw new Error(\'Library not loaded\');',
+  '          }',
+  '',
+  '          container.innerHTML = \'\';',
+  '          ',
+  '          const qrDiv = document.createElement(\'div\');',
+  '          qrDiv.className = \'qr-container\';',
+  '          qrDiv.id = \'qrcode-container\';',
+  '          container.appendChild(qrDiv);',
+  '',
+  '          new QRCode(qrDiv, {',
+  '            text: text,',
+  '            width: 280,',
+  '            height: 280,',
+  '            colorDark: \'#000000\',',
+  '            colorLight: \'#ffffff\',',
+  '            correctLevel: QRCode.CorrectLevel.M',
+  '          });',
+  '',
+  '          return true;',
+  '        } catch (error) {',
+  '          console.error(\'Library QR generation failed:\', error);',
+  '          return false;',
+  '        }',
+  '      },',
+  '',
+  '      async generateWithCanvas(text, container) {',
+  '        try {',
+  '          const canvas = document.createElement(\'canvas\');',
+  '          const size = 280;',
+  '          canvas.width = size;',
+  '          canvas.height = size;',
+  '          const ctx = canvas.getContext(\'2d\');',
+  '',
+  '          const apiUrl = \'https://api.qrserver.com/v1/create-qr-code/?size=\' + size + \'x\' + size + \'&data=\' + encodeURIComponent(text) + \'&format=png&margin=10\';',
+  '          ',
+  '          const img = new Image();',
+  '          img.crossOrigin = \'anonymous\';',
+  '          ',
+  '          return new Promise((resolve, reject) => {',
+  '            img.onload = () => {',
+  '              ctx.fillStyle = \'#ffffff\';',
+  '              ctx.fillRect(0, 0, size, size);',
+  '              ctx.drawImage(img, 0, 0, size, size);',
+  '              ',
+  '              container.innerHTML = \'\';',
+  '              const qrDiv = document.createElement(\'div\');',
+  '              qrDiv.className = \'qr-container\';',
+  '              canvas.style.display = \'block\';',
+  '              qrDiv.appendChild(canvas);',
+  '              container.appendChild(qrDiv);',
+  '              ',
+  '              resolve(true);',
+  '            };',
+  '',
+  '            img.onerror = () => {',
+  '              console.error(\'Canvas QR generation failed\');',
+  '              reject(false);',
+  '            };',
+  '',
+  '            setTimeout(() => reject(false), 10000);',
+  '            img.src = apiUrl;',
+  '          });',
+  '        } catch (error) {',
+  '          console.error(\'Canvas method failed:\', error);',
+  '          return false;',
+  '        }',
+  '      },',
+  '',
+  '      async generateWithAPI(text, container) {',
+  '        try {',
+  '          const size = 280;',
+  '          const apiUrl = \'https://api.qrserver.com/v1/create-qr-code/?size=\' + size + \'x\' + size + \'&data=\' + encodeURIComponent(text) + \'&format=png&margin=10\';',
+  '          ',
+  '          container.innerHTML = \'\';',
+  '          const qrDiv = document.createElement(\'div\');',
+  '          qrDiv.className = \'qr-container\';',
+  '          ',
+  '          const img = document.createElement(\'img\');',
+  '          img.width = size;',
+  '          img.height = size;',
+  '          img.alt = \'QR Code\';',
+  '          img.style.display = \'block\';',
+  '          ',
+  '          return new Promise((resolve, reject) => {',
+  '            img.onload = () => {',
+  '              qrDiv.appendChild(img);',
+  '              container.appendChild(qrDiv);',
+  '              resolve(true);',
+  '            };',
+  '            ',
+  '            img.onerror = () => {',
+  '              console.error(\'API QR generation failed\');',
+  '              reject(false);',
+  '            };',
+  '            ',
+  '            setTimeout(() => reject(false), 10000);',
+  '            img.src = apiUrl;',
+  '          });',
+  '        } catch (error) {',
+  '          console.error(\'API method failed:\', error);',
+  '          return false;',
+  '        }',
+  '      },',
+  '',
+  '      async generate(text) {',
+  '        const qrDisplay = document.getElementById(\'qr-display\');',
+  '        qrDisplay.innerHTML = \'<p class="muted">Generating QR code...</p>\';',
+  '',
+  '        try {',
+  '          let success = await this.generateWithLibrary(text, qrDisplay);',
+  '          ',
+  '          if (!success) {',
+  '            console.log(\'Attempting canvas fallback...\');',
+  '            success = await this.generateWithCanvas(text, qrDisplay);',
+  '          }',
+  '          ',
+  '          if (!success) {',
+  '            console.log(\'Attempting API fallback...\');',
+  '            success = await this.generateWithAPI(text, qrDisplay);',
+  '          }',
+  '',
+  '          if (success) {',
+  '            showToast(\'QR code generated successfully! Scan with your VPN app.\', \'success\');',
+  '            return true;',
+  '          } else {',
+  '            throw new Error(\'All QR generation methods failed\');',
+  '          }',
+  '        } catch (error) {',
+  '          console.error(\'QR generation error:\', error);',
+  '          qrDisplay.innerHTML = \`',
+  '            <div style="text-align:center;padding:20px;">',
+  '              <p class="muted" style="color:var(--danger);margin-bottom:16px">⚠️ Automatic QR generation failed.</p>',
+  '              <p class="muted" style="font-size:13px;margin-bottom:12px">Copy the link manually and use an online QR generator:</p>',
+  '              <a href="https://www.qr-code-generator.com/" target="_blank" rel="noopener noreferrer" ',
+  '                 class="btn ghost small" style="display:inline-flex">',
+  '                Open QR Generator',
+  '              </a>',
+  '            </div>',
+  '          \`;',
+  '          showToast(\'QR generation failed - please copy link manually\', \'error\');',
+  '          return false;',
+  '        }',
+  '      }',
+  '    };',
+  '',
+  '    function generateQRCode(text) {',
+  '      QRGenerator.generate(text);',
+  '    }',
+  '',
+  '    function showToast(message, type = \'success\') {',
+  '      const toast = document.getElementById(\'toast\');',
+  '      toast.textContent = message;',
+  '      toast.className = type;',
+  '      toast.classList.add(\'show\');',
+  '      setTimeout(() => toast.classList.remove(\'show\'), 3500);',
+  '    }',
+  '',
+  '    async function copyToClipboard(text, button) {',
+  '      try {',
+  '        await navigator.clipboard.writeText(text);',
+  '        const originalText = button.innerHTML;',
+  '        button.innerHTML = \'✓ Copied!\';',
+  '        button.disabled = true;',
+  '        setTimeout(() => {',
+  '          button.innerHTML = originalText;',
+  '          button.disabled = false;',
+  '        }, 2000);',
+  '        showToast(\'Copied to clipboard successfully!\', \'success\');',
+  '      } catch (error) {',
+  '        try {',
+  '            const textArea = document.createElement("textarea");',
+  '            textArea.value = text;',
+  '            textArea.style.position = "fixed";',
+  '            textArea.style.top = "0";',
+  '            textArea.style.left = "0";',
+  '            document.body.appendChild(textArea);',
+  '            textArea.focus();',
+  '            textArea.select();',
+  '            document.execCommand(\'copy\');',
+  '            document.body.removeChild(textArea);',
+  '',
+  '            const originalText = button.innerHTML;',
+  '            button.innerHTML = \'✓ Copied!\';',
+  '            button.disabled = true;',
+  '            setTimeout(() => {',
+  '                button.innerHTML = originalText;',
+  '                button.disabled = false;',
+  '            }, 2000);',
+  '            showToast(\'Copied to clipboard (fallback)!\', \'success\');',
+  '        } catch(err) {',
+  '            showToast(\'Failed to copy to clipboard\', \'error\');',
+  '            console.error(\'Copy error:\', error, err);',
+  '        }',
+  '      }',
+  '    }',
+  '',
+  '    function downloadConfig(content, filename) {',
+  '      const blob = new Blob([content], { type: \'text/plain;charset=utf-8\' });',
+  '      const url = URL.createObjectURL(blob);',
+  '      const link = document.createElement(\'a\');',
+  '      link.href = url;',
+  '      link.download = filename;',
+  '      document.body.appendChild(link);',
+  '      link.click();',
+  '      document.body.removeChild(link);',
+  '      URL.revokeObjectURL(url);',
+  '      showToast(\`Configuration downloaded: \${filename}\`, \'success\');',
+  '    }',
+  '',
+  '    // =========================================',
+  '    // ROBUST IP DETECTION - MULTIPLE FALLBACKS',
+  '    // =========================================',
+  '    async function fetchIPInfo() {',
+  '      const displayElement = (id, value, isFinal = false) => {',
+  '        const el = document.getElementById(id);',
+  '        if (!el) return;',
+  '        ',
+  '        el.textContent = value || \'Unavailable\';',
+  '        if (isFinal) {',
+  '          el.classList.remove(\'detecting\');',
+  '        }',
+  '      };',
+  '',
+  '      async function fetchWithTimeout(url, timeout = 8000) {',
+  '        const controller = new AbortController();',
+  '        const timeoutId = setTimeout(() => controller.abort(), timeout);',
+  '        ',
+  '        try {',
+  '          const response = await fetch(url, { ',
+  '            signal: controller.signal,',
+  '            cache: \'no-store\',',
+  '            mode: \'cors\'',
+  '          });',
+  '          clearTimeout(timeoutId);',
+  '          ',
+  '          if (!response.ok) throw new Error(\`HTTP \${response.status}\`);',
+  '          return response;',
+  '        } catch (error) {',
+  '          clearTimeout(timeoutId);',
+  '          throw error;',
+  '        }',
+  '      }',
+  '',
+  '      // CLIENT IP DETECTION',
+  '      const clientIPAPIs = [',
+  '        { ',
+  '          url: \'https://api.ipify.org?format=json\', ',
+  '          parse: async (r) => (await r.json()).ip',
+  '        },',
+  '        {',
+  '          url: \'https://ipapi.co/json/\',',
+  '          parse: async (r) => (await r.json()).ip',
+  '        },',
+  '        {',
+  '          url: \'https://ifconfig.me/ip\',',
+  '          parse: async (r) => (await r.text()).trim()',
+  '        },',
+  '        {',
+  '          url: \'https://icanhazip.com\',',
+  '          parse: async (r) => (await r.text()).trim()',
+  '        },',
+  '        {',
+  '          url: \'https://api.my-ip.io/v2/ip.json\',',
+  '          parse: async (r) => (await r.json()).ip',
+  '        },',
+  '        {',
+  '          url: \'https://checkip.amazonaws.com\',',
+  '          parse: async (r) => (await r.text()).trim()',
+  '        },',
+  '        {',
+  '          url: \'https://wtfismyip.com/text\',',
+  '          parse: async (r) => (await r.text()).trim()',
+  '        }',
+  '      ];',
+  '',
+  '      let clientIP = null;',
+  '      for (const api of clientIPAPIs) {',
+  '        try {',
+  '          const response = await fetchWithTimeout(api.url);',
+  '          clientIP = await api.parse(response);',
+  '          if (clientIP && clientIP.trim() && /^[0-9.:a-fA-F]+$/.test(clientIP.trim())) {',
+  '            clientIP = clientIP.trim();',
+  '            displayElement(\'client-ip\', clientIP, true);',
+  '            console.log(\`✓ Client IP detected: \${clientIP} via \${api.url}\`);',
+  '            break;',
+  '          }',
+  '        } catch (error) {',
+  '          console.warn(\`Client IP API failed (\${api.url}): \${error.message}\`);',
+  '        }',
+  '      }',
+  '',
+  '      if (!clientIP) {',
+  '        displayElement(\'client-ip\', \'Detection failed\', true);',
+  '      }',
+  '',
+  '      // CLIENT GEOLOCATION',
+  '      const clientGeoAPIs = [',
+  '        {',
+  '          url: clientIP ? \`https://ipapi.co/\${clientIP}/json/\` : \'https://ipapi.co/json/\',',
+  '          parse: async (r) => {',
+  '            const data = await r.json();',
+  '            if (data.error) throw new Error(data.reason || \'API Error\');',
+  '            return {',
+  '              city: data.city || \'\',',
+  '              country: data.country_name || \'\',',
+  '              isp: data.org || \'\'',
+  '            };',
+  '          }',
+  '        },',
+  '        {',
+  '          url: clientIP ? \`https://ip-api.com/json/\${clientIP}?fields=status,message,city,country,isp\` : \'https://ip-api.com/json/?fields=status,message,city,country,isp\',',
+  '          parse: async (r) => {',
+  '            const data = await r.json();',
+  '            if (data.status === \'fail\') throw new Error(data.message || \'API Error\');',
+  '            return {',
+  '              city: data.city || \'\',',
+  '              country: data.country || \'\',',
+  '              isp: data.isp || \'\'',
+  '            };',
+  '          }',
+  '        },',
+  '        {',
+  '          url: clientIP ? \`https://ipwho.is/\${clientIP}\` : \'https://ipwho.is/\',',
+  '          parse: async (r) => {',
+  '            const data = await r.json();',
+  '            if (!data.success) throw new Error(\'API Error\');',
+  '            return {',
+  '              city: data.city || \'\',',
+  '              country: data.country || \'\',',
+  '              isp: data.connection?.isp || \'\'',
+  '            };',
+  '          }',
+  '        },',
+  '        {',
+  '          url: clientIP ? \`https://freegeoip.app/json/\${clientIP}\` : \'https://freegeoip.app/json/\',',
+  '          parse: async (r) => {',
+  '            const data = await r.json();',
+  '            return {',
+  '              city: data.city || \'\',',
+  '              country: data.country_name || \'\',',
+  '              isp: \'\' // No ISP in this API',
+  '            };',
+  '          }',
+  '        }',
+  '      ];',
+  '',
+  '      let clientGeo = null;',
+  '      for (const api of clientGeoAPIs) {',
+  '        try {',
+  '          const response = await fetchWithTimeout(api.url);',
+  '          clientGeo = await api.parse(response);',
+  '          if (clientGeo && (clientGeo.city || clientGeo.country)) {',
+  '            const location = [clientGeo.city, clientGeo.country].filter(Boolean).join(\', \') || \'Unknown\';',
+  '            displayElement(\'client-location\', location, true);',
+  '            displayElement(\'client-isp\', clientGeo.isp || \'Unknown\', true);',
+  '            break;',
+  '          }',
+  '        } catch (error) {',
+  '          console.warn(\`Client Geo API failed (\${api.url}): \${error.message}\`);',
+  '        }',
+  '      }',
+  '',
+  '      if (!clientGeo) {',
+  '        displayElement(\'client-location\', \'Detection failed\', true);',
+  '        displayElement(\'client-isp\', \'Detection failed\', true);',
+  '      }',
+  '',
+  '      // PROXY IP RESOLUTION',
+  '      const proxyHost = window.CONFIG.proxyAddress.split(\':\')[0];',
+  '      let proxyIP = proxyHost;',
+  '      ',
+  '      const ipv4Regex = /^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}$/;',
+  '      const ipv6Regex = /^\\[?[0-9a-fA-F:]+\\]?$/;',
+  '      ',
+  '      if (!ipv4Regex.test(proxyHost) && !ipv6Regex.test(proxyHost)) {',
+  '        const dnsAPIs = [',
+  '          {',
+  '            url: \`https://cloudflare-dns.com/dns-query?name=\${encodeURIComponent(proxyHost)}&type=A\`,',
+  '            headers: { \'accept\': \'application/dns-json\' },',
+  '            parse: async (r) => {',
+  '              const data = await r.json();',
+  '              const answer = data.Answer?.find(a => a.type === 1);',
+  '              return answer?.data;',
+  '            }',
+  '          },',
+  '          {',
+  '            url: \`https://dns.google/resolve?name=\${encodeURIComponent(proxyHost)}&type=A\`,',
+  '            headers: { \'accept\': \'application/json\' },',
+  '            parse: async (r) => {',
+  '              const data = await r.json();',
+  '              const answer = data.Answer?.find(a => a.type === 1);',
+  '              return answer?.data;',
+  '            }',
+  '          },',
+  '          {',
+  '            url: \`https://1.1.1.1/dns-query?name=\${encodeURIComponent(proxyHost)}&type=A\`,',
+  '            headers: { \'accept\': \'application/dns-json\' },',
+  '            parse: async (r) => {',
+  '              const data = await r.json();',
+  '              const answer = data.Answer?.find(a => a.type === 1);',
+  '              return answer?.data;',
+  '            }',
+  '          }',
+  '        ];',
+  '',
+  '        for (const api of dnsAPIs) {',
+  '          try {',
+  '            const response = await fetchWithTimeout(api.url);',
+  '            const resolvedIP = await api.parse(response);',
+  '            if (resolvedIP && /^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}$/.test(resolvedIP)) {',
+  '              proxyIP = resolvedIP;',
+  '              break;',
+  '            }',
+  '          } catch (error) {',
+  '            console.warn(\`DNS resolution failed (\${api.url}): \${error.message}\`);',
+  '          }',
+  '        }',
+  '      }',
+  '      ',
+  '      displayElement(\'proxy-ip\', proxyIP, true);',
+  '',
+  '      // PROXY GEOLOCATION',
+  '      const proxyGeoAPIs = [',
+  '        {',
+  '          url: \`https://ipapi.co/\${proxyIP}/json/\`,',
+  '          parse: async (r) => {',
+  '            const data = await r.json();',
+  '            if (data.error) throw new Error(data.reason || \'API Error\');',
+  '            return {',
+  '              city: data.city || \'\',',
+  '              country: data.country_name || \'\'',
+  '            };',
+  '          }',
+  '        },',
+  '        {',
+  '          url: \`https://ip-api.com/json/\${proxyIP}?fields=status,message,city,country\`,',
+  '          parse: async (r) => {',
+  '            const data = await r.json();',
+  '            if (data.status === \'fail\') throw new Error(data.message || \'API Error\');',
+  '            return {',
+  '              city: data.city || \'\',',
+  '              country: data.country || \'\'',
+  '            };',
+  '          }',
+  '        },',
+  '        {',
+  '          url: \`https://ipwho.is/\${proxyIP}\`,',
+  '          parse: async (r) => {',
+  '            const data = await r.json();',
+  '            if (!data.success) throw new Error(\'API Error\');',
+  '            return {',
+  '              city: data.city || \'\',',
+  '              country: data.country || \'\'',
+  '            };',
+  '          }',
+  '        }',
+  '      ];',
+  '',
+  '      let proxyGeo = null;',
+  '      for (const api of proxyGeoAPIs) {',
+  '        try {',
+  '          const response = await fetchWithTimeout(api.url);',
+  '          proxyGeo = await api.parse(response);',
+  '          if (proxyGeo && (proxyGeo.city || proxyGeo.country)) {',
+  '            const location = [proxyGeo.city, proxyGeo.country].filter(Boolean).join(\', \') || \'Unknown\';',
+  '            displayElement(\'proxy-location\', location, true);',
+  '            break;',
+  '          }',
+  '        } catch (error) {',
+  '          console.warn(\`Proxy Geo API failed (\${api.url}): \${error.message}\`);',
+  '        }',
+  '      }',
+  '',
+  '      if (!proxyGeo) {',
+  '        displayElement(\'proxy-location\', \'Detection failed\', true);',
+  '      }',
+  '    }',
+  '',
+  '    function updateExpirationDisplay() {',
+  '      if (!window.CONFIG.expirationDateTime) {',
+  '        const countdownEl = document.getElementById(\'expiry-countdown\');',
+  '        const localEl = document.getElementById(\'expiry-local\');',
+  '        const utcEl = document.getElementById(\'expiry-utc\');',
+  '        if (countdownEl) countdownEl.textContent = \'Unlimited\';',
+  '        if (localEl) localEl.textContent = \'No expiration set (Unlimited)\';',
+  '        if (utcEl) utcEl.textContent = \'\';',
+  '        return;',
+  '      }',
+  '      ',
+  '      const expiryDate = new Date(window.CONFIG.expirationDateTime);',
+  '      if (isNaN(expiryDate.getTime())) {',
+  '        document.getElementById(\'expiry-local\').textContent = \'Invalid expiration date\';',
+  '        document.getElementById(\'expiry-utc\').textContent = \'\';',
+  '        document.getElementById(\'expiry-countdown\').textContent = \'Invalid\';',
+  '        return;',
+  '      }',
+  '      ',
+  '      const now = new Date();',
+  '      const diffMs = expiryDate - now;',
+  '      const diffSeconds = Math.floor(diffMs / 1000);',
+  '      ',
+  '      const countdownEl = document.getElementById(\'expiry-countdown\');',
+  '      const localEl = document.getElementById(\'expiry-local\');',
+  '      const utcEl = document.getElementById(\'expiry-utc\');',
+  '      ',
+  '      if (diffSeconds < 0) {',
+  '        countdownEl.textContent = \'Expired\';',
+  '        countdownEl.parentElement.classList.add(\'status-expired\');',
+  '        return;',
+  '      }',
+  '      ',
+  '      const days = Math.floor(diffSeconds / 86400);',
+  '      const hours = Math.floor((diffSeconds % 86400) / 3600);',
+  '      const minutes = Math.floor((diffSeconds % 3600) / 60);',
+  '      const seconds = diffSeconds % 60;',
+  '      ',
+  '      if (days > 0) {',
+  '        countdownEl.textContent = days + \'d \' + hours + \'h \' + minutes + \'m \' + seconds + \'s\';',
+  '      } else if (hours > 0) {',
+  '        countdownEl.textContent = hours + \'h \' + minutes + \'m \' + seconds + \'s\';',
+  '      } else if (minutes > 0) {',
+  '        countdownEl.textContent = minutes + \'m \' + seconds + \'s\';',
+  '      } else {',
+  '        countdownEl.textContent = seconds + \'s\';',
+  '      }',
+  '      ',
+  '      if (localEl) {',
+  '        localEl.textContent = \`Expires: \${expiryDate.toLocaleString()}\`;',
+  '      }',
+  '      if (utcEl) {',
+  '        utcEl.textContent = \`UTC: \${expiryDate.toISOString().replace(\'T\', \' \').substring(0, 19)}\`;',
+  '      }',
+  '    }',
+  '',
+  '    function animateProgressBar(targetWidth) {',
+  '      const progressBar = document.getElementById(\'progress-bar-fill\');',
+  '      if (!progressBar) return;',
+  '      ',
+  '      setTimeout(() => {',
+  '        progressBar.style.width = targetWidth + \'%\';',
+  '      }, 100);',
+  '    }',
+  '',
+  '    async function refreshUserPanel() {',
+  '      try {',
+  '        const response = await fetch(\'/api/user/\' + window.CONFIG.uuid);',
+  '',
+  '        if (response.ok) {',
+  '          const data = await response.json();',
+  '',
+  '          const usageDisplay = document.getElementById(\'usage-display\');',
+  '          usageDisplay.textContent = formatBytes(data.traffic_used || 0);',
+  '',
+  '          let usagePercentage = 0;',
+  '          if (data.traffic_limit && data.traffic_limit > 0) {',
+  '            usagePercentage = Math.min(((data.traffic_used || 0) / data.traffic_limit) * 100, 100);',
+  '          }',
+  '',
+  '          let usagePercentageDisplay;',
+  '          if (usagePercentage > 0 && usagePercentage < 0.01) {',
+  '            usagePercentageDisplay = \'< 0.01%\';',
+  '          } else if (usagePercentage === 0) {',
+  '            usagePercentageDisplay = \'0%\';',
+  '          } else if (usagePercentage === 100) {',
+  '            usagePercentageDisplay = \'100%\';',
+  '          } else {',
+  '            usagePercentageDisplay = usagePercentage.toFixed(2) + \'%\';',
+  '          }',
+  '',
+  '          const progressFill = document.getElementById(\'progress-bar-fill\');',
+  '          if (progressFill) {',
+  '            progressFill.dataset.targetWidth = usagePercentage.toFixed(2);',
+  '            progressFill.className = \'progress-fill \' + (usagePercentage > 80 ? \'high\' : usagePercentage > 50 ? \'medium\' : \'low\');',
+  '            animateProgressBar(usagePercentage);',
+  '          }',
+  '',
+  '          const usageStat = document.querySelector(\'.section-title span.muted\');',
+  '          if (usageStat) {',
+  '            usageStat.textContent = usagePercentageDisplay + \' Used\';',
+  '          }',
+  '',
+  '          const usageText = document.querySelector(\'.progress-bar + p\');',
+  '          if (usageText) {',
+  '            usageText.textContent = formatBytes(data.traffic_used || 0) + \' of \' + (data.traffic_limit ? formatBytes(data.traffic_limit) : \'Unlimited\') + \' used\';',
+  '          }',
+  '        }',
+  '',
+  '        updateExpirationDisplay();',
+  '        showToast(\'Panel auto-refreshed\', \'success\');',
+  '      } catch (error) {',
+  '        console.error(\'Auto-refresh error:\', error);',
+  '      }',
+  '    }',
+  '',
+  '    function startUserAutoRefresh() {',
+  '      setInterval(refreshUserPanel, ' + CONST.AUTO_REFRESH_INTERVAL + ');',
+  '    }',
+  '',
+  '    document.addEventListener(\'DOMContentLoaded\', () => {',
+  '      try {',
+  '        QRGenerator.waitForLibrary().then(() => {',
+  '          console.log(\'QR Code system ready\');',
+  '        });',
+  '',
+  '        document.getElementById(\'copy-xray-sub\').addEventListener(\'click\', function() {',
+  '          copyToClipboard(window.CONFIG.subXrayUrl, this);',
+  '        });',
+  '        ',
+  '        document.getElementById(\'copy-sb-sub\').addEventListener(\'click\', function() {',
+  '          copyToClipboard(window.CONFIG.subSbUrl, this);',
+  '        });',
+  '        ',
+  '        document.getElementById(\'show-xray-config\').addEventListener(\'click\', () => {',
+  '          document.getElementById(\'xray-config\').classList.toggle(\'hidden\');',
+  '        });',
+  '        ',
+  '        document.getElementById(\'show-sb-config\').addEventListener(\'click\', () => {',
+  '          document.getElementById(\'sb-config\').classList.toggle(\'hidden\');',
+  '        });',
+  '        ',
+  '        document.getElementById(\'qr-xray-sub-btn\').addEventListener(\'click\', () => {',
+  '          generateQRCode(window.CONFIG.subXrayUrl);',
+  '        });',
+  '        ',
+  '        document.getElementById(\'qr-sb-sub-btn\').addEventListener(\'click\', () => {',
+  '          generateQRCode(window.CONFIG.subSbUrl);',
+  '        });',
+  '        ',
+  '        document.getElementById(\'qr-xray-config-btn\').addEventListener(\'click\', () => {',
+  '          generateQRCode(window.CONFIG.singleXrayConfig);',
+  '        });',
+  '        ',
+  '        document.getElementById(\'qr-sb-config-btn\').addEventListener(\'click\', () => {',
+  '          generateQRCode(window.CONFIG.singleSingboxConfig);',
+  '        });',
+  '        ',
+  '        document.getElementById(\'download-xray\').addEventListener(\'click\', () => {',
+  '          downloadConfig(window.CONFIG.singleXrayConfig, \'xray-vless-config.txt\');',
+  '        });',
+  '        ',
+  '        document.getElementById(\'download-sb\').addEventListener(\'click\', () => {',
+  '          downloadConfig(window.CONFIG.singleSingboxConfig, \'singbox-vless-config.txt\');',
+  '        });',
+  '        ',
+  '        document.getElementById(\'btn-refresh-ip\').addEventListener(\'click\', () => {',
+  '          showToast(\'Refreshing network information...\', \'success\');',
+  '          location.reload();  // Server-side, so reload',
+  '        });',
+  '        ',
+  '        // Use server-injected geo data',
+  '        const clientGeo = window.CLIENT_GEO;',
+  '        const proxyGeo = window.PROXY_GEO;',
+  '        const proxyIP = window.PROXY_IP;',
+  '        const clientIp = window.CLIENT_IP;',
+  '        ',
+  '        document.getElementById(\'proxy-ip\').textContent = window.PROXY_IP || \'Detection failed\';',
+  '        document.getElementById(\'proxy-location\').textContent = window.PROXY_GEO ? [window.PROXY_GEO.city, window.PROXY_GEO.country].filter(Boolean).join(\', \') : \'Detection failed\';',
+  '        document.getElementById(\'client-ip\').textContent = window.CLIENT_IP || \'Detection failed\';',
+  '        document.getElementById(\'client-location\').textContent = window.CLIENT_GEO ? [window.CLIENT_GEO.city, window.CLIENT_GEO.country].filter(Boolean).join(\', \') : \'Detection failed\';',
+  '        document.getElementById(\'client-isp\').textContent = window.CLIENT_GEO ? window.CLIENT_GEO.isp : \'Detection failed\';',
+  '        ',
+  '        // Remove detecting class',
+  '        [\'proxy-ip\', \'proxy-location\', \'client-ip\', \'client-location\', \'client-isp\'].forEach(id => {',
+  '          const el = document.getElementById(id);',
+  '          if (el) el.classList.remove(\'detecting\');',
+  '        });',
+  '        ',
+  '        updateExpirationDisplay();',
+  '        if (!window.CONFIG.expirationDateTime) {',
+  '          document.getElementById(\'expiry-local\').textContent = \'No expiration set (Unlimited)\';',
+  '          document.getElementById(\'expiry-utc\').textContent = \'\';',
+  '          document.getElementById(\'expiry-countdown\').textContent = \'Unlimited\';',
+  '        }',
+  '        animateProgressBar(window.CONFIG.initialTrafficUsed ? (window.CONFIG.initialTrafficUsed / window.CONFIG.trafficLimit * 100).toFixed(2) : 0);',
+  '        ',
+  '        setInterval(updateExpirationDisplay, 1000); // Update every second for precise countdown',
+  '        startUserAutoRefresh(); // Start auto-refresh for user panel',
+  '      } catch (e) {',
+  '        console.error(\'User panel init error:\', e);',
+  '        showToast(\'Panel initialization failed\', \'error\');',
+  '      }',
+  '    });',
+  '    ',
+  '    // ============================================================================',
+  '    // INTEGRATED ULTRA ADAPTIVE SMART POLLING (RASPS) - ADVANCED AUTO-REFRESH',
+  '    // ============================================================================',
+  '    ',
+  '    (function() {',
+  '        const CONFIG = {',
+  '            ENDPOINT: \'/api/user/\' + window.CONFIG.uuid,',
+  '            POLL_MIN_MS: 50000, // Adjusted base to ~1min with jitter',
+  '            POLL_MAX_MS: 70000,',
+  '            INACTIVE_MULTIPLIER: 4,',
+  '            MAX_BACKOFF_MS: 300000,',
+  '            INITIAL_BACKOFF_MS: 2000,',
+  '            BACKOFF_FACTOR: 1.8,',
+  '            USE_ETAG: true,',
+  '            FIELDS_TO_TRACK: [\'usedMB\', \'data_used\', \'limitMB\', \'data_limit\', \'expires\', \'status\'],',
+  '            DOM_SELECTORS: {',
+  '                usage: \'#usage-display\',',
+  '                status: \'#status-badge\',',
+  '                time: \'#expiry-countdown\'',
+  '            }',
+  '        };',
+  '',
+  '        let lastEtag = null;',
+  '        let lastModified = null;',
+  '        let lastDataHash = null;',
+  '        let currentBackoff = CONFIG.INITIAL_BACKOFF_MS;',
+  '        let isPolling = false;',
+  '        let pollTimeout = null;',
+  '        let isPageVisible = document.visibilityState === \'visible\';',
+  '        let lastSuccessfulFetch = Date.now();',
+  '',
+  '        function getRandomDelay() {',
+  '            const baseMin = CONFIG.POLL_MIN_MS;',
+  '            const baseMax = CONFIG.POLL_MAX_MS;',
+  '            const multiplier = isPageVisible ? 1 : CONFIG.INACTIVE_MULTIPLIER;',
+  '            const minDelay = baseMin * multiplier;',
+  '            const maxDelay = baseMax * multiplier;',
+  '            return Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;',
+  '        }',
+  '',
+  '        function computeHash(data) {',
+  '            const str = JSON.stringify(data);',
+  '            let hash = 0;',
+  '            for (let i = 0; i < str.length; i++) {',
+  '                const char = str.charCodeAt(i);',
+  '                hash = ((hash << 5) - hash) + char;',
+  '                hash = hash & hash;',
+  '            }',
+  '            return hash.toString(36);',
+  '        }',
+  '',
+  '        function extractDataFromJson(json) {',
+  '            return {',
+  '                usedMB: json.traffic_used || json.usedMB,',
+  '                limitMB: json.traffic_limit || json.limitMB,',
+  '                expires: json.expiration_date + \'T\' + json.expiration_time + \'Z\' || json.expires,',
+  '                status: json.status',
+  '            };',
+  '        }',
+  '',
+  '        function extractDataFromHtml(html) {',
+  '            const parser = new DOMParser();',
+  '            const doc = parser.parseFromString(html, \'text/html\');',
+  '            return {',
+  '                usedMB: doc.querySelector(CONFIG.DOM_SELECTORS.usage)?.textContent.trim() || null,',
+  '                expires: doc.querySelector(CONFIG.DOM_SELECTORS.time)?.textContent.trim() || null,',
+  '                status: doc.querySelector(CONFIG.DOM_SELECTORS.status)?.textContent.trim() || null',
+  '            };',
+  '        }',
+  '',
+  '        function updateDOM(data) {',
+  '            const usageEl = document.querySelector(CONFIG.DOM_SELECTORS.usage);',
+  '            const timeEl = document.querySelector(CONFIG.DOM_SELECTORS.time);',
+  '            const statusEl = document.querySelector(CONFIG.DOM_SELECTORS.status);',
+  '',
+  '            if (usageEl && data.usedMB && data.limitMB) {',
+  '                const percentage = ((data.usedMB / data.limitMB) * 100).toFixed(1);',
+  '                usageEl.textContent = formatBytes(data.usedMB) || \'0 Bytes\';',
+  '                const usageStat = document.querySelector(\'.section-title span.muted\');',
+  '                if (usageStat) {',
+  '                    usageStat.textContent = percentage + \'% Used\';',
+  '                }',
+  '                const progressFill = document.getElementById(\'progress-bar-fill\');',
+  '                if (progressFill) {',
+  '                    progressFill.dataset.targetWidth = percentage;',
+  '                    progressFill.className = \'progress-fill \' + (percentage > 80 ? \'high\' : percentage > 50 ? \'medium\' : \'low\');',
+  '                    animateProgressBar(percentage);',
+  '                }',
+  '                const usageText = document.querySelector(\'.progress-bar + p\');',
+  '                if (usageText) {',
+  '                    usageText.textContent = formatBytes(data.usedMB) + \' of \' + formatBytes(data.limitMB) + \' used\';',
+  '                }',
+  '            }',
+  '            if (timeEl && data.expires) {',
+  '                window.CONFIG.expirationDateTime = data.expires;',
+  '                updateExpirationDisplay();',
+  '            }',
+  '            if (statusEl && data.status) {',
+  '                statusEl.textContent = data.status;',
+  '                statusEl.parentElement.className = \'stat \' + (data.status === \'Expired\' ? \'status-expired\' : \'status-active\');',
+  '            }',
+  '            showToast(\'Data refreshed\', \'success\');',
+  '        }',
+  '',
+  '        async function fetchData() {',
+  '            const headers = new Headers({',
+  '                \'Cache-Control\': \'no-cache\'',
+  '            });',
+  '            if (CONFIG.USE_ETAG && lastEtag) {',
+  '                headers.set(\'If-None-Match\', lastEtag);',
+  '            }',
+  '            if (lastModified) {',
+  '                headers.set(\'If-Modified-Since\', lastModified);',
+  '            }',
+  '',
+  '            try {',
+  '                const response = await fetch(CONFIG.ENDPOINT, {',
+  '                    method: \'GET\',',
+  '                    headers: headers,',
+  '                    cache: \'no-store\'',
+  '                });',
+  '',
+  '                if (response.status === 304) {',
+  '                    console.debug(\'Data unchanged (304 Not Modified)\');',
+  '                    return null;',
+  '                }',
+  '',
+  '                if (!response.ok) {',
+  '                    throw new Error(\'HTTP error: \' + response.status);',
+  '                }',
+  '',
+  '                lastEtag = response.headers.get(\'ETag\');',
+  '                lastModified = response.headers.get(\'Last-Modified\');',
+  '                lastSuccessfulFetch = Date.now();',
+  '',
+  '                const contentType = response.headers.get(\'Content-Type\') || \'\';',
+  '                let rawData;',
+  '                if (contentType.includes(\'application/json\')) {',
+  '                    rawData = await response.json();',
+  '                } else {',
+  '                    rawData = await response.text();',
+  '                }',
+  '',
+  '                const data = contentType.includes(\'application/json\')',
+  '                    ? extractDataFromJson(rawData)',
+  '                    : extractDataFromHtml(rawData);',
+  '',
+  '                const newHash = computeHash(data);',
+  '                if (newHash === lastDataHash) {',
+  '                    console.debug(\'Data hash unchanged - skipping DOM update\');',
+  '                    return null;',
+  '                }',
+  '',
+  '                lastDataHash = newHash;',
+  '                return data;',
+  '            } catch (error) {',
+  '                console.warn(\'Fetch error:\', error.message);',
+  '                throw error;',
+  '            }',
+  '        }',
+  '',
+  '        function scheduleNextPoll() {',
+  '            if (pollTimeout) clearTimeout(pollTimeout);',
+  '            const delay = getRandomDelay();',
+  '            console.debug(\'Next poll in \' + Math.round(delay / 1000) + \' seconds\');',
+  '            pollTimeout = setTimeout(poll, delay);',
+  '        }',
+  '',
+  '        async function poll() {',
+  '            if (!isPolling) return;',
+  '',
+  '            try {',
+  '                const data = await fetchData();',
+  '                if (data) {',
+  '                    updateDOM(data);',
+  '                    console.debug(\'Data updated successfully\');',
+  '                }',
+  '                currentBackoff = CONFIG.INITIAL_BACKOFF_MS;',
+  '            } catch (error) {',
+  '                console.error(\'Polling failed:\', error);',
+  '                const jitter = Math.random() * (currentBackoff / 2);',
+  '                currentBackoff = Math.min(currentBackoff * CONFIG.BACKOFF_FACTOR + jitter, CONFIG.MAX_BACKOFF_MS);',
+  '                console.warn(\'Retrying after \' + Math.round(currentBackoff / 1000) + \' seconds\');',
+  '            } finally {',
+  '                scheduleNextPoll();',
+  '            }',
+  '        }',
+  '',
+  '        function handleVisibilityChange() {',
+  '            isPageVisible = document.visibilityState === \'visible\';',
+  '            if (isPageVisible && Date.now() - lastSuccessfulFetch > CONFIG.POLL_MIN_MS) {',
+  '                poll();',
+  '            }',
+  '        }',
+  '',
+  '        function startPolling() {',
+  '            if (isPolling) return;',
+  '            isPolling = true;',
+  '            document.addEventListener(\'visibilitychange\', handleVisibilityChange);',
+  '            scheduleNextPoll();',
+  '        }',
+  '',
+  '        function stopPolling() {',
+  '            isPolling = false;',
+  '            if (pollTimeout) clearTimeout(pollTimeout);',
+  '            document.removeEventListener(\'visibilitychange\', handleVisibilityChange);',
+  '        }',
+  '',
+  '        // Advanced features: Idle detection and adaptive rate based on change frequency',
+  '        let changeFrequency = 0;',
+  '        let lastChangeTime = Date.now();',
+  '        function adjustPollingRate(hasChanged) {',
+  '            if (hasChanged) {',
+  '                changeFrequency++;',
+  '                const timeSinceLastChange = Date.now() - lastChangeTime;',
+  '                if (timeSinceLastChange < CONFIG.POLL_MIN_MS) {',
+  '                    CONFIG.POLL_MIN_MS = Math.max(CONFIG.POLL_MIN_MS / 1.2, 10000);',
+  '                    CONFIG.POLL_MAX_MS = Math.max(CONFIG.POLL_MAX_MS / 1.2, 30000);',
+  '                }',
+  '                lastChangeTime = Date.now();',
+  '            } else {',
+  '                changeFrequency = Math.max(0, changeFrequency - 0.5);',
+  '                if (changeFrequency < 1) {',
+  '                    CONFIG.POLL_MIN_MS = Math.min(CONFIG.POLL_MIN_MS * 1.1, 35000);',
+  '                    CONFIG.POLL_MAX_MS = Math.min(CONFIG.POLL_MAX_MS * 1.1, 85000);',
+  '                }',
+  '            }',
+  '        }',
+  '',
+  '        // Override updateDOM to track changes',
+  '        const originalUpdateDOM = updateDOM;',
+  '        updateDOM = function(data) {',
+  '            originalUpdateDOM(data);',
+  '            const hasChanged = true; // Assume change for safety; can refine with diff',
+  '            adjustPollingRate(hasChanged);',
+  '        };',
+  '',
+  '        // Start the system',
+  '        if (CONFIG.ENDPOINT) {',
+  '            startPolling();',
+  '        } else {',
+  '            console.error(\'RASPS: ENDPOINT not configured - polling disabled\');',
+  '        }',
+  '',
+  '        // Export controls for debugging',
+  '        window.RASPS = {',
+  '            start: startPolling,',
+  '            stop: stopPolling,',
+  '            config: CONFIG',
+  '        };',
+  '    })();',
   '  </script>',
   '</body>',
   '</html>'
 ].join('\n');
 
-  var nonce = generateNonce();
-  var headers = new Headers({ 'Content-Type': 'text/html;charset=utf-8' });
+  const nonce = generateNonce();
+  const headers = new Headers({ 'Content-Type': 'text/html;charset=utf-8' });
   addSecurityHeaders(headers, nonce, {
     img: 'data: https://api.qrserver.com',
     connect: 'https://api.qrserver.com'
   });
   
-  var finalHtml = userPanelHTML.replace(/CSP_NONCE_PLACEHOLDER/g, nonce);
-  finalHtml = finalHtml.replace('window.CLIENT_GEO = null;', "window.CLIENT_GEO = " + JSON.stringify(clientGeo) + ";");
-  finalHtml = finalHtml.replace('window.PROXY_GEO = null;', "window.PROXY_GEO = " + JSON.stringify(proxyGeo) + ";");
-  finalHtml = finalHtml.replace('window.PROXY_IP = null;', "window.PROXY_IP = \"" + proxyIP + "\";");
-  finalHtml = finalHtml.replace('window.CLIENT_IP = null;', "window.CLIENT_IP = \"" + clientIp + "\";");
+  let finalHtml = userPanelHTML.replace(/CSP_NONCE_PLACEHOLDER/g, nonce);
+  finalHtml = finalHtml.replace('window.CLIENT_GEO = null;', `window.CLIENT_GEO = ${JSON.stringify(clientGeo)};`);
+  finalHtml = finalHtml.replace('window.PROXY_GEO = null;', `window.PROXY_GEO = ${JSON.stringify(proxyGeo)};`);
+  finalHtml = finalHtml.replace('window.PROXY_IP = null;', `window.PROXY_IP = "${proxyIP}";`);
+  finalHtml = finalHtml.replace('window.CLIENT_IP = null;', `window.CLIENT_IP = "${clientIp}";`);
 
-  return new Response(finalHtml, { headers: headers });
+  return new Response(finalHtml, { headers });
 }
 
 // ============================================================================
 // VLESS PROTOCOL HANDLERS (complete, unchanged from original)
 // ============================================================================
 
-function ProtocolOverWSHandler(request, config, env, ctx) {
-  var clientIp = request.headers.get('CF-Connecting-IP');
-  if (isSuspiciousIP(clientIp, config.scamalytics, env.SCAMALYTICS_THRESHOLD || CONST.SCAMALYTICS_THRESHOLD)) {
+async function ProtocolOverWSHandler(request, config, env, ctx) {
+  const clientIp = request.headers.get('CF-Connecting-IP');
+  if (await isSuspiciousIP(clientIp, config.scamalytics, env.SCAMALYTICS_THRESHOLD || CONST.SCAMALYTICS_THRESHOLD)) {
     return new Response('Access denied', { status: 403 });
   }
 
-  var webSocketPair = new WebSocketPair();
-  var client = webSocketPair[0];
-  var webSocket = webSocketPair[1];
+  const webSocketPair = new WebSocketPair();
+  const [client, webSocket] = Object.values(webSocketPair);
   webSocket.accept();
 
-  var address = '';
-  var portWithRandomLog = '';
-  var sessionUsage = 0;
-  var userUUID = '';
-  var udpStreamWriter = null;
+  let address = '';
+  let portWithRandomLog = '';
+  let sessionUsage = 0;
+  let userUUID = '';
+  let udpStreamWriter = null;
 
-  var log = function(info, event) { console.log("[" + address + ":" + portWithRandomLog + "] " + info, event || ''); };
+  const log = (info, event) => console.log(`[${address}:${portWithRandomLog}] ${info}`, event || '');
 
-  var deferredUsageUpdate = function() {
+  const deferredUsageUpdate = () => {
     if (sessionUsage > 0 && userUUID) {
-      var usageToUpdate = sessionUsage;
-      var uuidToUpdate = userUUID;
+      const usageToUpdate = sessionUsage;
+      const uuidToUpdate = userUUID;
       
       sessionUsage = 0;
       
       ctx.waitUntil(
-        updateUsage(env, uuidToUpdate, usageToUpdate, ctx).catch(function(err) { console.error("Deferred usage update failed for " + uuidToUpdate + ":", err); })
+        updateUsage(env, uuidToUpdate, usageToUpdate, ctx)
+          .catch(err => console.error(`Deferred usage update failed for ${uuidToUpdate}:`, err))
       );
     }
   };
 
-  var updateInterval = setInterval(deferredUsageUpdate, 10000);
+  const updateInterval = setInterval(deferredUsageUpdate, 10000);
 
-  var finalCleanup = function() {
+  const finalCleanup = () => {
     clearInterval(updateInterval);
     deferredUsageUpdate();
   };
@@ -2140,14 +3126,14 @@ function ProtocolOverWSHandler(request, config, env, ctx) {
   webSocket.addEventListener('close', finalCleanup, { once: true });
   webSocket.addEventListener('error', finalCleanup, { once: true });
 
-  var earlyDataHeader = request.headers.get('Sec-WebSocket-Protocol') || '';
-  var readableWebSocketStream = MakeReadableWebSocketStream(webSocket, earlyDataHeader, log);
-  var remoteSocketWrapper = { value: null };
+  const earlyDataHeader = request.headers.get('Sec-WebSocket-Protocol') || '';
+  const readableWebSocketStream = MakeReadableWebSocketStream(webSocket, earlyDataHeader, log);
+  let remoteSocketWrapper = { value: null };
 
   readableWebSocketStream
     .pipeTo(
       new WritableStream({
-        write: function(chunk, controller) {
+        async write(chunk, controller) {
           sessionUsage += chunk.byteLength;
 
           if (udpStreamWriter) {
@@ -2155,23 +3141,23 @@ function ProtocolOverWSHandler(request, config, env, ctx) {
           }
 
           if (remoteSocketWrapper.value) {
-            var writer = remoteSocketWrapper.value.writable.getWriter();
-            writer.write(chunk).then(function() {
-              writer.releaseLock();
-            });
+            const writer = remoteSocketWrapper.value.writable.getWriter();
+            await writer.write(chunk);
+            writer.releaseLock();
             return;
           }
 
-          var processResult = ProcessProtocolHeader(chunk, env, ctx);
-          var user = processResult.user;
-          var hasError = processResult.hasError;
-          var message = processResult.message;
-          var addressType = processResult.addressType;
-          var portRemote = processResult.portRemote || 443;
-          var addressRemote = processResult.addressRemote || '';
-          var rawDataIndex = processResult.rawDataIndex;
-          var ProtocolVersion = processResult.ProtocolVersion || new Uint8Array([0, 0]);
-          var isUDP = processResult.isUDP;
+          const {
+            user,
+            hasError,
+            message,
+            addressType,
+            portRemote = 443,
+            addressRemote = '',
+            rawDataIndex,
+            ProtocolVersion = new Uint8Array([0, 0]),
+            isUDP,
+          } = await ProcessProtocolHeader(chunk, env, ctx);
 
           if (hasError) {
             controller.error(new Error('Authentication failed'));
@@ -2191,7 +3177,7 @@ function ProtocolOverWSHandler(request, config, env, ctx) {
           }
 
           if (user.traffic_limit && user.traffic_limit > 0) {
-            var totalUsage = (user.traffic_used || 0) + sessionUsage;
+            const totalUsage = (user.traffic_used || 0) + sessionUsage;
             if (totalUsage >= user.traffic_limit) {
               controller.error(new Error('Authentication failed'));
               return;
@@ -2200,27 +3186,27 @@ function ProtocolOverWSHandler(request, config, env, ctx) {
 
           // IP Limit Check
           if (user.ip_limit && user.ip_limit > -1) {
-            var ipCount = env.DB.prepare("SELECT COUNT(DISTINCT ip) as count FROM user_ips WHERE uuid = ?").bind(userUUID).first('count');
+            const ipCount = await env.DB.prepare("SELECT COUNT(DISTINCT ip) as count FROM user_ips WHERE uuid = ?").bind(userUUID).first('count');
             if (ipCount >= user.ip_limit) {
               controller.error(new Error('IP limit exceeded'));
               return;
             }
             // Update current IP
-            env.DB.prepare("INSERT OR REPLACE INTO user_ips (uuid, ip, last_seen) VALUES (?, ?, CURRENT_TIMESTAMP)").bind(userUUID, clientIp).run();
+            await env.DB.prepare("INSERT OR REPLACE INTO user_ips (uuid, ip, last_seen) VALUES (?, ?, CURRENT_TIMESTAMP)").bind(userUUID, clientIp).run();
           }
 
           address = addressRemote;
-          portWithRandomLog = portRemote + "--" + Math.random() + " " + (isUDP ? 'udp' : 'tcp');
-          var vlessResponseHeader = new Uint8Array([ProtocolVersion[0], 0]);
-          var rawClientData = chunk.slice(rawDataIndex);
+          portWithRandomLog = `${portRemote}--${Math.random()} ${isUDP ? 'udp' : 'tcp'}`;
+          const vlessResponseHeader = new Uint8Array([ProtocolVersion[0], 0]);
+          const rawClientData = chunk.slice(rawDataIndex);
 
           if (isUDP) {
             if (portRemote === 53) {
-              var dnsPipeline = createDnsPipeline(webSocket, vlessResponseHeader, log, function(bytes) {
+              const dnsPipeline = await createDnsPipeline(webSocket, vlessResponseHeader, log, (bytes) => {
                 sessionUsage += bytes;
               });
               udpStreamWriter = dnsPipeline.write;
-              udpStreamWriter(rawClientData);
+              await udpStreamWriter(rawClientData);
             } else {
               controller.error(new Error('Authentication failed'));
             }
@@ -2237,20 +3223,20 @@ function ProtocolOverWSHandler(request, config, env, ctx) {
             vlessResponseHeader,
             log,
             config,
-            function(bytes) { sessionUsage += bytes; }
+            (bytes) => { sessionUsage += bytes; }
           );
         },
-        close: function() {
+        close() {
           log('readableWebSocketStream closed');
           finalCleanup();
         },
-        abort: function(err) {
+        abort(err) {
           log('readableWebSocketStream aborted', err);
           finalCleanup();
-        }
-      })
+        },
+      }),
     )
-    .catch(function(err) {
+    .catch(err => {
       console.error('Pipeline failed:', err.stack || err);
       safeCloseWebSocket(webSocket);
       finalCleanup();
@@ -2259,58 +3245,58 @@ function ProtocolOverWSHandler(request, config, env, ctx) {
   return new Response(null, { status: 101, webSocket: client });
 }
 
-function ProcessProtocolHeader(protocolBuffer, env, ctx) {
+async function ProcessProtocolHeader(protocolBuffer, env, ctx) {
   if (protocolBuffer.byteLength < 24) {
     return { hasError: true, message: 'invalid data' };
   }
   
-  var dataView = new DataView(protocolBuffer.buffer || protocolBuffer);
-  var version = dataView.getUint8(0);
+  const dataView = new DataView(protocolBuffer.buffer || protocolBuffer);
+  const version = dataView.getUint8(0);
 
-  var uuid;
+  let uuid;
   try {
     uuid = stringify(new Uint8Array(protocolBuffer.slice(1, 17)));
   } catch (e) {
     return { hasError: true, message: 'invalid UUID format' };
   }
 
-  var userData = getUserData(env, uuid, ctx);
+  const userData = await getUserData(env, uuid, ctx);
   if (!userData) {
     return { hasError: true, message: 'invalid user' };
   }
 
-  var payloadStart = 17;
+  const payloadStart = 17;
   if (protocolBuffer.byteLength < payloadStart + 1) {
     return { hasError: true, message: 'invalid data length' };
   }
 
-  var optLength = dataView.getUint8(payloadStart);
-  var commandIndex = payloadStart + 1 + optLength;
+  const optLength = dataView.getUint8(payloadStart);
+  const commandIndex = payloadStart + 1 + optLength;
   
   if (protocolBuffer.byteLength < commandIndex + 1) {
     return { hasError: true, message: 'invalid data length (command)' };
   }
   
-  var command = dataView.getUint8(commandIndex);
+  const command = dataView.getUint8(commandIndex);
   if (command !== 1 && command !== 2) {
-    return { hasError: true, message: "command " + command + " is not supported" };
+    return { hasError: true, message: `command ${command} is not supported` };
   }
 
-  var portIndex = commandIndex + 1;
+  const portIndex = commandIndex + 1;
   if (protocolBuffer.byteLength < portIndex + 2) {
     return { hasError: true, message: 'invalid data length (port)' };
   }
   
-  var portRemote = dataView.getUint16(portIndex, false);
+  const portRemote = dataView.getUint16(portIndex, false);
 
-  var addressTypeIndex = portIndex + 2;
+  const addressTypeIndex = portIndex + 2;
   if (protocolBuffer.byteLength < addressTypeIndex + 1) {
     return { hasError: true, message: 'invalid data length (address type)' };
   }
   
-  var addressType = dataView.getUint8(addressTypeIndex);
+  const addressType = dataView.getUint8(addressTypeIndex);
 
-  var addressValue, addressLength, addressValueIndex;
+  let addressValue, addressLength, addressValueIndex;
 
   switch (addressType) {
     case 1:
@@ -2340,20 +3326,16 @@ function ProcessProtocolHeader(protocolBuffer, env, ctx) {
       if (protocolBuffer.byteLength < addressValueIndex + addressLength) {
         return { hasError: true, message: 'invalid data length (ipv6)' };
       }
-      addressValue = (function() {
-        var arr = [];
-        for (var i = 0; i < 8; i++) {
-          arr.push(dataView.getUint16(addressValueIndex + i * 2, false).toString(16));
-        }
-        return arr.join(':');
-      })();
+      addressValue = Array.from({ length: 8 }, (_, i) => 
+        dataView.getUint16(addressValueIndex + i * 2, false).toString(16)
+      ).join(':');
       break;
       
     default:
-      return { hasError: true, message: "invalid addressType: " + addressType };
+      return { hasError: true, message: `invalid addressType: ${addressType}` };
   }
 
-  var rawDataIndex = addressValueIndex + addressLength;
+  const rawDataIndex = addressValueIndex + addressLength;
   if (protocolBuffer.byteLength < rawDataIndex) {
     return { hasError: true, message: 'invalid data length (raw data)' };
   }
@@ -2362,15 +3344,15 @@ function ProcessProtocolHeader(protocolBuffer, env, ctx) {
     user: userData,
     hasError: false,
     addressRemote: addressValue,
-    addressType: addressType,
-    portRemote: portRemote,
-    rawDataIndex: rawDataIndex,
+    addressType,
+    portRemote,
+    rawDataIndex,
     ProtocolVersion: new Uint8Array([version]),
     isUDP: command === 2,
   };
 }
 
-function HandleTCPOutBound(
+async function HandleTCPOutBound(
   remoteSocket,
   addressType,
   addressRemote,
@@ -2382,124 +3364,124 @@ function HandleTCPOutBound(
   config,
   trafficCallback
 ) {
-  function connectAndWrite(address, port, socks) {
-    socks = socks || false;
-    var tcpSocket;
+  async function connectAndWrite(address, port, socks = false) {
+    let tcpSocket;
     if (config.socks5Relay) {
-      tcpSocket = socks5Connect(addressType, address, port, log, config.parsedSocks5Address);
+      tcpSocket = await socks5Connect(addressType, address, port, log, config.parsedSocks5Address);
     } else {
       tcpSocket = socks
-        ? socks5Connect(addressType, address, port, log, config.parsedSocks5Address)
+        ? await socks5Connect(addressType, address, port, log, config.parsedSocks5Address)
         : connect({ hostname: address, port: port });
     }
     remoteSocket.value = tcpSocket;
-    log("connected to " + address + ":" + port);
-    var writer = tcpSocket.writable.getWriter();
-    writer.write(rawClientData).then(function() {
-      writer.releaseLock();
-    });
+    log(`connected to ${address}:${port}`);
+    const writer = tcpSocket.writable.getWriter();
+    await writer.write(rawClientData);
+    writer.releaseLock();
     return tcpSocket;
   }
 
-  function retry() {
-    var tcpSocket = config.enableSocks
-      ? connectAndWrite(addressRemote, portRemote, true)
-      : connectAndWrite(
+  async function retry() {
+    const tcpSocket = config.enableSocks
+      ? await connectAndWrite(addressRemote, portRemote, true)
+      : await connectAndWrite(
           config.proxyIP || addressRemote,
           config.proxyPort || portRemote,
           false,
         );
 
     tcpSocket.closed
-      .catch(function(error) {
+      .catch(error => {
         console.log('retry tcpSocket closed error', error);
       })
-      .finally(function() {
+      .finally(() => {
         safeCloseWebSocket(webSocket);
       });
     RemoteSocketToWS(tcpSocket, webSocket, protocolResponseHeader, null, log, trafficCallback);
   }
 
-  var tcpSocket = connectAndWrite(addressRemote, portRemote);
+  const tcpSocket = await connectAndWrite(addressRemote, portRemote);
   RemoteSocketToWS(tcpSocket, webSocket, protocolResponseHeader, retry, log, trafficCallback);
 }
 
 function MakeReadableWebSocketStream(webSocketServer, earlyDataHeader, log) {
   return new ReadableStream({
-    start: function(controller) {
-      webSocketServer.addEventListener('message', function(event) { controller.enqueue(event.data); });
-      webSocketServer.addEventListener('close', function() {
+    start(controller) {
+      webSocketServer.addEventListener('message', (event) => controller.enqueue(event.data));
+      webSocketServer.addEventListener('close', () => {
         safeCloseWebSocket(webSocketServer);
         controller.close();
       });
-      webSocketServer.addEventListener('error', function(err) {
+      webSocketServer.addEventListener('error', (err) => {
         log('webSocketServer has error');
         controller.error(err);
       });
-      var earlyDataResult = base64ToArrayBuffer(earlyDataHeader);
-      var earlyData = earlyDataResult.earlyData;
-      var error = earlyDataResult.error;
+      const { earlyData, error } = base64ToArrayBuffer(earlyDataHeader);
       if (error) controller.error(error);
       else if (earlyData) controller.enqueue(earlyData);
     },
-    pull: function(_controller) { },
-    cancel: function(reason) {
-      log("ReadableStream was canceled, due to " + reason);
+    pull(_controller) { },
+    cancel(reason) {
+      log(`ReadableStream was canceled, due to ${reason}`);
       safeCloseWebSocket(webSocketServer);
     },
   });
 }
 
-function RemoteSocketToWS(remoteSocket, webSocket, protocolResponseHeader, retry, log, trafficCallback) {
-  var hasIncomingData = false;
-  remoteSocket.readable.pipeTo(
-    new WritableStream({
-      write: function(chunk) {
-        if (webSocket.readyState !== CONST.WS_READY_STATE_OPEN)
-          throw new Error('WebSocket is not open');
-        hasIncomingData = true;
-        
-        if (trafficCallback) {
-          trafficCallback(chunk.byteLength);
-        }
-        
-        var dataToSend = protocolResponseHeader
-          ? new Blob([protocolResponseHeader, chunk]).arrayBuffer()
-          : chunk;
-        webSocket.send(dataToSend);
-        protocolResponseHeader = null;
-      },
-      close: function() {
-        log("Remote connection readable closed. Had incoming data: " + hasIncomingData);
-      },
-      abort: function(reason) {
-        console.error('Remote connection readable aborted:', reason);
-      },
-    })
-  ).catch(function(error) {
+async function RemoteSocketToWS(remoteSocket, webSocket, protocolResponseHeader, retry, log, trafficCallback) {
+  let hasIncomingData = false;
+  try {
+    await remoteSocket.readable.pipeTo(
+      new WritableStream({
+        async write(chunk) {
+          if (webSocket.readyState !== CONST.WS_READY_STATE_OPEN)
+            throw new Error('WebSocket is not open');
+          hasIncomingData = true;
+          
+          if (trafficCallback) {
+            trafficCallback(chunk.byteLength);
+          }
+          
+          const dataToSend = protocolResponseHeader
+            ? await new Blob([protocolResponseHeader, chunk]).arrayBuffer()
+            : chunk;
+          webSocket.send(dataToSend);
+          protocolResponseHeader = null;
+        },
+        close() {
+          log(`Remote connection readable closed. Had incoming data: ${hasIncomingData}`);
+        },
+        abort(reason) {
+          console.error('Remote connection readable aborted:', reason);
+        },
+      }),
+    );
+  } catch (error) {
     console.error('RemoteSocketToWS error:', error.stack || error);
     safeCloseWebSocket(webSocket);
-  });
+  }
   if (!hasIncomingData && retry) {
     log('No incoming data, retrying');
-    retry().catch(function(e) {
-      console.error('Retry failed:', e);
-    });
+    try {
+        await retry();
+    } catch(e) {
+        console.error('Retry failed:', e);
+    }
   }
 }
 
 function base64ToArrayBuffer(base64Str) {
   if (!base64Str) return { earlyData: null, error: null };
   try {
-    var binaryStr = atob(base64Str.replace(/-/g, '+').replace(/_/g, '/'));
-    var buffer = new ArrayBuffer(binaryStr.length);
-    var view = new Uint8Array(buffer);
-    for (var i = 0; i < binaryStr.length; i++) {
+    const binaryStr = atob(base64Str.replace(/-/g, '+').replace(/_/g, '/'));
+    const buffer = new ArrayBuffer(binaryStr.length);
+    const view = new Uint8Array(buffer);
+    for (let i = 0; i < binaryStr.length; i++) {
       view[i] = binaryStr.charCodeAt(i);
     }
     return { earlyData: buffer, error: null };
   } catch (error) {
-    return { earlyData: null, error: error };
+    return { earlyData: null, error };
   }
 }
 
@@ -2516,17 +3498,16 @@ function safeCloseWebSocket(socket) {
   }
 }
 
-function createDnsPipeline(webSocket, vlessResponseHeader, log, trafficCallback) {
-  var isHeaderSent = false;
-  var transformStream = new TransformStream({
+async function createDnsPipeline(webSocket, vlessResponseHeader, log, trafficCallback) {
+  let isHeaderSent = false;
+  const transformStream = new TransformStream({
     transform(chunk, controller) {
-      var index = 0;
-      while (index < chunk.byteLength) {
+      for (let index = 0; index < chunk.byteLength;) {
         if (index + 2 > chunk.byteLength) break;
-        var lengthBuffer = chunk.slice(index, index + 2);
-        var udpPacketLength = new DataView(lengthBuffer).getUint16(0);
+        const lengthBuffer = chunk.slice(index, index + 2);
+        const udpPacketLength = new DataView(lengthBuffer).getUint16(0);
         if (index + 2 + udpPacketLength > chunk.byteLength) break;
-        var udpData = new Uint8Array(chunk.slice(index + 2, index + 2 + udpPacketLength));
+        const udpData = new Uint8Array(chunk.slice(index + 2, index + 2 + udpPacketLength));
         index = index + 2 + udpPacketLength;
         controller.enqueue(udpData);
       }
@@ -2536,24 +3517,24 @@ function createDnsPipeline(webSocket, vlessResponseHeader, log, trafficCallback)
   transformStream.readable
     .pipeTo(
       new WritableStream({
-        write: function(chunk) {
-          fetch('https://1.1.1.1/dns-query', {
-            method: 'POST',
-            headers: { 'content-type': 'application/dns-message' },
-            body: chunk,
-          }).then(function(resp) {
-            return resp.arrayBuffer();
-          }).then(function(dnsQueryResult) {
-            var udpSize = dnsQueryResult.byteLength;
-            var udpSizeBuffer = new Uint8Array([(udpSize >> 8) & 0xff, udpSize & 0xff]);
+        async write(chunk) {
+          try {
+            const resp = await fetch('https://1.1.1.1/dns-query', {
+              method: 'POST',
+              headers: { 'content-type': 'application/dns-message' },
+              body: chunk,
+            });
+            const dnsQueryResult = await resp.arrayBuffer();
+            const udpSize = dnsQueryResult.byteLength;
+            const udpSizeBuffer = new Uint8Array([(udpSize >> 8) & 0xff, udpSize & 0xff]);
 
             if (webSocket.readyState === CONST.WS_READY_STATE_OPEN) {
-              log("DNS query successful, length: " + udpSize);
-              var responseChunk;
+              log(`DNS query successful, length: ${udpSize}`);
+              let responseChunk;
               if (isHeaderSent) {
-                responseChunk = new Blob([udpSizeBuffer, dnsQueryResult]).arrayBuffer();
+                responseChunk = await new Blob([udpSizeBuffer, dnsQueryResult]).arrayBuffer();
               } else {
-                responseChunk = new Blob([vlessResponseHeader, udpSizeBuffer, dnsQueryResult]).arrayBuffer();
+                responseChunk = await new Blob([vlessResponseHeader, udpSizeBuffer, dnsQueryResult]).arrayBuffer();
                 isHeaderSent = true;
               }
               if (trafficCallback) {
@@ -2561,45 +3542,45 @@ function createDnsPipeline(webSocket, vlessResponseHeader, log, trafficCallback)
               }
               webSocket.send(responseChunk);
             }
-          }).catch(function(error) {
+          } catch (error) {
             log('DNS query error: ' + error);
-          });
+          }
         },
-      })
+      }),
     )
-    .catch(function(e) {
+    .catch(e => {
       log('DNS stream error: ' + e);
     });
 
-  var writer = transformStream.writable.getWriter();
+  const writer = transformStream.writable.getWriter();
   return {
-    write: function(chunk) { return writer.write(chunk); },
+    write: (chunk) => writer.write(chunk),
   };
 }
 
 function parseIPv6(ipv6) {
-    var buffer = new ArrayBuffer(16);
-    var view = new DataView(buffer);
+    const buffer = new ArrayBuffer(16);
+    const view = new DataView(buffer);
     
-    var parts = ipv6.split('::');
-    var left = parts[0] ? parts[0].split(':') : [];
-    var right = parts[1] ? parts[1].split(':') : [];
+    const parts = ipv6.split('::');
+    let left = parts[0] ? parts[0].split(':') : [];
+    let right = parts[1] ? parts[1].split(':') : [];
     
     if (left.length === 1 && left[0] === '') left = [];
     if (right.length === 1 && right[0] === '') right = [];
     
-    var missing = 8 - (left.length + right.length);
-    var expansion = [];
+    const missing = 8 - (left.length + right.length);
+    const expansion = [];
     if (missing > 0) {
-        for (var i = 0; i < missing; i++) {
+        for (let i = 0; i < missing; i++) {
             expansion.push('0000');
         }
     }
     
-    var hextets = [].concat(left, expansion, right);
+    const hextets = [...left, ...expansion, ...right];
     
-    for (var i = 0; i < 8; i++) {
-        var val = parseInt(hextets[i] || '0', 16);
+    for (let i = 0; i < 8; i++) {
+        const val = parseInt(hextets[i] || '0', 16);
         view.setUint16(i * 2, val, false);
     }
     
@@ -2607,26 +3588,23 @@ function parseIPv6(ipv6) {
 }
 
 // @ts-ignore
-function socks5Connect(addressType, addressRemote, portRemote, log, parsedSocks5Address) {
-  var username = parsedSocks5Address.username;
-  var password = parsedSocks5Address.password;
-  var hostname = parsedSocks5Address.hostname;
-  var port = parsedSocks5Address.port;
+async function socks5Connect(addressType, addressRemote, portRemote, log, parsedSocks5Address) {
+  const { username, password, hostname, port } = parsedSocks5Address;
   
-  var socket;
-  var reader;
-  var writer;
-  var success = false;
+  let socket;
+  let reader;
+  let writer;
+  let success = false;
 
   try {
-    socket = connect({ hostname: hostname, port: port });
+    socket = connect({ hostname, port });
     reader = socket.readable.getReader();
     writer = socket.writable.getWriter();
     
-    var encoder = new TextEncoder();
+    const encoder = new TextEncoder();
 
-    writer.write(new Uint8Array([5, 2, 0, 2]));
-    var res = reader.read().value;
+    await writer.write(new Uint8Array([5, 2, 0, 2]));
+    let res = (await reader.read()).value;
     if (!res || res[0] !== 0x05 || res[1] === 0xff) {
       throw new Error('SOCKS5 handshake failed. Server rejected methods.');
     }
@@ -2635,53 +3613,62 @@ function socks5Connect(addressType, addressRemote, portRemote, log, parsedSocks5
       if (!username || !password) {
         throw new Error('SOCKS5 server requires credentials, but none provided.');
       }
-      var authRequest = new Uint8Array([
+      const authRequest = new Uint8Array([
         1,
         username.length,
-        encoder.encode(username),
+        ...encoder.encode(username),
         password.length,
-        encoder.encode(password)
+        ...encoder.encode(password)
       ]);
-      writer.write(authRequest);
-      res = reader.read().value;
+      await writer.write(authRequest);
+      res = (await reader.read()).value;
       if (!res || res[0] !== 0x01 || res[1] !== 0x00) {
-        throw new Error("SOCKS5 authentication failed (Code: " + res[1] + ")");
+        throw new Error(`SOCKS5 authentication failed (Code: ${res[1]})`);
       }
     }
 
-    var dstAddr;
+    let dstAddr;
     switch (addressType) {
       case 1:
-        dstAddr = new Uint8Array([1].concat(addressRemote.split('.').map(Number)));
+        dstAddr = new Uint8Array([1, ...addressRemote.split('.').map(Number)]);
         break;
       case 2:
-        dstAddr = new Uint8Array([3, addressRemote.length].concat(encoder.encode(addressRemote)));
+        dstAddr = new Uint8Array([3, addressRemote.length, ...encoder.encode(addressRemote)]);
         break;
       case 3:
-        var ipv6Bytes = parseIPv6(addressRemote);
+        const ipv6Bytes = parseIPv6(addressRemote);
         if (ipv6Bytes.length !== 16) {
-          throw new Error("Failed to parse IPv6 address: " + addressRemote);
+          throw new Error(`Failed to parse IPv6 address: ${addressRemote}`);
         }
-        dstAddr = new Uint8Array([4].concat(Array.from(ipv6Bytes)));
+        dstAddr = new Uint8Array(1 + 16);
+        dstAddr[0] = 4;
+        dstAddr.set(ipv6Bytes, 1);
         break;
       default:
-        throw new Error("Invalid address type: " + addressType);
+        throw new Error(`Invalid address type: ${addressType}`);
     }
 
-    var socksRequest = new Uint8Array([5, 1, 0].concat(Array.from(dstAddr), [portRemote >> 8, portRemote & 0xff]));
-    writer.write(socksRequest);
+    const socksRequest = new Uint8Array([
+      5,
+      1,
+      0,
+      ...dstAddr,
+      portRemote >> 8,
+      portRemote & 0xff
+    ]);
+    await writer.write(socksRequest);
     
-    res = reader.read().value;
+    res = (await reader.read()).value;
     if (!res || res[1] !== 0x00) {
-      throw new Error("SOCKS5 connection failed. Server responded with code: " + res[1]);
+      throw new Error(`SOCKS5 connection failed. Server responded with code: ${res[1]}`);
     }
 
-    log("SOCKS5 connection to " + addressRemote + ":" + portRemote + " established.");
+    log(`SOCKS5 connection to ${addressRemote}:${portRemote} established.`);
     success = true;
     return socket;
 
   } catch (err) {
-    log("socks5Connect Error: " + err.message, err);
+    log(`socks5Connect Error: ${err.message}`, err);
     throw err;
   } finally {
     if (writer) writer.releaseLock();
@@ -2701,18 +3688,16 @@ function socks5AddressParser(address) {
   if (!address || typeof address !== 'string') {
     throw new Error('Invalid SOCKS5 address format');
   }
-  var parts = address.includes('@') ? address.split('@') : [null, address];
-  var authPart = parts[0];
-  var hostPart = parts[1];
-  var lastColonIndex = hostPart.lastIndexOf(':');
+  const [authPart, hostPart] = address.includes('@') ? address.split('@') : [null, address];
+  const lastColonIndex = hostPart.lastIndexOf(':');
 
   if (lastColonIndex === -1) {
     throw new Error('Invalid SOCKS5 address: missing port');
   }
   
-  var hostname;
+  let hostname;
   if (hostPart.startsWith('[')) {
-      var closingBracketIndex = hostPart.lastIndexOf(']');
+      const closingBracketIndex = hostPart.lastIndexOf(']');
       if (closingBracketIndex === -1 || closingBracketIndex > lastColonIndex) {
           throw new Error('Invalid IPv6 SOCKS5 address format');
       }
@@ -2721,21 +3706,19 @@ function socks5AddressParser(address) {
       hostname = hostPart.substring(0, lastColonIndex);
   }
 
-  var portStr = hostPart.substring(lastColonIndex + 1);
-  var port = parseInt(portStr, 10);
+  const portStr = hostPart.substring(lastColonIndex + 1);
+  const port = parseInt(portStr, 10);
   
   if (!hostname || isNaN(port)) {
     throw new Error('Invalid SOCKS5 address');
   }
 
-  var username, password;
+  let username, password;
   if (authPart) {
-    var auth = authPart.split(':');
-    username = auth[0];
-    password = auth[1];
+    [username, password] = authPart.split(':');
   }
   
-  return { username: username, password: password, hostname: hostname, port: port };
+  return { username, password, hostname, port };
 }
 
 // ============================================================================
@@ -2744,54 +3727,63 @@ function socks5AddressParser(address) {
 
 export default {
   async fetch(request, env, ctx) {
-    var cfg = Config.fromEnv(env);
+    let cfg;
     
-    var url = new URL(request.url);
-    var clientIp = request.headers.get('CF-Connecting-IP');
+    try {
+      cfg = await Config.fromEnv(env);
+    } catch (err) {
+      console.error(`Configuration Error: ${err.message}`);
+      const headers = new Headers();
+      addSecurityHeaders(headers, null, {});
+      return new Response(`Configuration Error: ${err.message}`, { status: 503, headers });
+    }
 
-    var adminPrefix = env.ADMIN_PATH_PREFIX || 'admin';
+    const url = new URL(request.url);
+    const clientIp = request.headers.get('CF-Connecting-IP');
+
+    const adminPrefix = env.ADMIN_PATH_PREFIX || 'admin';
     
-    if (url.pathname.startsWith("/" + adminPrefix + "/")) {
+    if (url.pathname.startsWith(`/${adminPrefix}/`)) {
       return await handleAdminRequest(request, env, ctx, adminPrefix);
     }
 
     if (url.pathname === '/health') {
-      var headers = new Headers();
+      const headers = new Headers();
       addSecurityHeaders(headers, null, {});
-      return new Response('OK', { status: 200, headers: headers });
+      return new Response('OK', { status: 200, headers });
     }
 
     if (url.pathname.startsWith('/api/user/')) {
-      var uuid = url.pathname.substring('/api/user/'.length);
-      var headers = new Headers({ 'Content-Type': 'application/json' });
+      const uuid = url.pathname.substring('/api/user/'.length);
+      const headers = new Headers({ 'Content-Type': 'application/json' });
       addSecurityHeaders(headers, null, {});
       if (request.method !== 'GET') {
-        return new Response(JSON.stringify({ error: 'Method Not Allowed' }), { status: 405, headers: headers });
+        return new Response(JSON.stringify({ error: 'Method Not Allowed' }), { status: 405, headers });
       }
       if (!isValidUUID(uuid)) {
-        return new Response(JSON.stringify({ error: 'Invalid UUID' }), { status: 400, headers: headers });
+        return new Response(JSON.stringify({ error: 'Invalid UUID' }), { status: 400, headers });
       }
-      var userData = getUserData(env, uuid, ctx);
+      const userData = await getUserData(env, uuid, ctx);
       if (!userData) {
-        return new Response(JSON.stringify({ error: 'Authentication failed' }), { status: 403, headers: headers });
+        return new Response(JSON.stringify({ error: 'Authentication failed' }), { status: 403, headers });
       }
       return new Response(JSON.stringify({
         traffic_used: userData.traffic_used || 0,
         traffic_limit: userData.traffic_limit,
         expiration_date: userData.expiration_date,
         expiration_time: userData.expiration_time
-      }), { status: 200, headers: headers });
+      }), { status: 200, headers });
     }
 
-    var upgradeHeader = request.headers.get('Upgrade');
-    if (upgradeHeader && upgradeHeader.toLowerCase() === 'websocket') {
+    const upgradeHeader = request.headers.get('Upgrade');
+    if (upgradeHeader?.toLowerCase() === 'websocket') {
       if (!env.DB) {
-        var headers = new Headers();
+        const headers = new Headers();
         addSecurityHeaders(headers, null, {});
-        return new Response('Service not configured properly', { status: 503, headers: headers });
+        return new Response('Service not configured properly', { status: 503, headers });
       }
       
-      var requestConfig = {
+      const requestConfig = {
         userID: cfg.userID,
         proxyIP: cfg.proxyIP,
         proxyPort: cfg.proxyPort,
@@ -2802,51 +3794,51 @@ export default {
         scamalytics: cfg.scamalytics,
       };
       
-      var wsResponse = ProtocolOverWSHandler(request, requestConfig, env, ctx);
+      const wsResponse = await ProtocolOverWSHandler(request, requestConfig, env, ctx);
       
-      var headers = new Headers(wsResponse.headers);
+      const headers = new Headers(wsResponse.headers);
       addSecurityHeaders(headers, null, {});
       
-      return new Response(wsResponse.body, { status: wsResponse.status, webSocket: wsResponse.webSocket, headers: headers });
+      return new Response(wsResponse.body, { status: wsResponse.status, webSocket: wsResponse.webSocket, headers });
     }
 
-    async function handleSubscription(core) {
-      var rateLimitKey = "user_path_rate:" + clientIp;
-      if (checkRateLimit(env.DB, rateLimitKey, CONST.USER_PATH_RATE_LIMIT, CONST.USER_PATH_RATE_TTL)) {
-        var headers = new Headers();
+    const handleSubscription = async (core) => {
+      const rateLimitKey = `user_path_rate:${clientIp}`;
+      if (await checkRateLimit(env.DB, rateLimitKey, CONST.USER_PATH_RATE_LIMIT, CONST.USER_PATH_RATE_TTL)) {
+        const headers = new Headers();
         addSecurityHeaders(headers, null, {});
-        return new Response('Rate limit exceeded', { status: 429, headers: headers });
+        return new Response('Rate limit exceeded', { status: 429, headers });
       }
 
-      var uuid = url.pathname.substring(("/" + core + "/").length);
+      const uuid = url.pathname.substring(`/${core}/`.length);
       if (!isValidUUID(uuid)) {
-        var headers = new Headers();
+        const headers = new Headers();
         addSecurityHeaders(headers, null, {});
-        return new Response('Invalid UUID', { status: 400, headers: headers });
+        return new Response('Invalid UUID', { status: 400, headers });
       }
       
-      var userData = getUserData(env, uuid, ctx);
+      const userData = await getUserData(env, uuid, ctx);
       if (!userData) {
-        var headers = new Headers();
+        const headers = new Headers();
         addSecurityHeaders(headers, null, {});
-        return new Response('Authentication failed', { status: 403, headers: headers });
+        return new Response('Authentication failed', { status: 403, headers });
       }
       
       if (isExpired(userData.expiration_date, userData.expiration_time)) {
-        var headers = new Headers();
+        const headers = new Headers();
         addSecurityHeaders(headers, null, {});
-        return new Response('Authentication failed', { status: 403, headers: headers });
+        return new Response('Authentication failed', { status: 403, headers });
       }
       
       if (userData.traffic_limit && userData.traffic_limit > 0 && 
           (userData.traffic_used || 0) >= userData.traffic_limit) {
-        var headers = new Headers();
+        const headers = new Headers();
         addSecurityHeaders(headers, null, {});
-        return new Response('Authentication failed', { status: 403, headers: headers });
+        return new Response('Authentication failed', { status: 403, headers });
       }
       
-      return handleIpSubscription(core, uuid, url.hostname);
-    }
+      return await handleIpSubscription(core, uuid, url.hostname);
+    };
 
     if (url.pathname.startsWith('/xray/')) {
       return await handleSubscription('xray');
@@ -2856,88 +3848,95 @@ export default {
       return await handleSubscription('sb');
     }
 
-    var path = url.pathname.slice(1);
+    const path = url.pathname.slice(1);
     if (isValidUUID(path)) {
-      var rateLimitKey = "user_path_rate:" + clientIp;
-      if (checkRateLimit(env.DB, rateLimitKey, CONST.USER_PATH_RATE_LIMIT, CONST.USER_PATH_RATE_TTL)) {
-        var headers = new Headers();
+      const rateLimitKey = `user_path_rate:${clientIp}`;
+      if (await checkRateLimit(env.DB, rateLimitKey, CONST.USER_PATH_RATE_LIMIT, CONST.USER_PATH_RATE_TTL)) {
+        const headers = new Headers();
         addSecurityHeaders(headers, null, {});
-        return new Response('Rate limit exceeded', { status: 429, headers: headers });
+        return new Response('Rate limit exceeded', { status: 429, headers });
       }
 
-      var userData = getUserData(env, path, ctx);
+      const userData = await getUserData(env, path, ctx);
       if (!userData) {
-        var headers = new Headers();
+        const headers = new Headers();
         addSecurityHeaders(headers, null, {});
-        return new Response('Authentication failed', { status: 403, headers: headers });
+        return new Response('Authentication failed', { status: 403, headers });
       }
       
       return handleUserPanel(path, url.hostname, cfg.proxyAddress, userData);
     }
 
     if (env.ROOT_PROXY_URL) {
-      var proxyUrl;
       try {
-        proxyUrl = new URL(env.ROOT_PROXY_URL);
-      } catch (urlError) {
-        console.error("Invalid ROOT_PROXY_URL: " + env.ROOT_PROXY_URL, urlError);
-        var headers = new Headers();
-        addSecurityHeaders(headers, null, {});
-        return new Response('Proxy configuration error: Invalid URL format', { status: 500, headers: headers });
-      }
+        let proxyUrl;
+        try {
+          proxyUrl = new URL(env.ROOT_PROXY_URL);
+        } catch (urlError) {
+          console.error(`Invalid ROOT_PROXY_URL: ${env.ROOT_PROXY_URL}`, urlError);
+          const headers = new Headers();
+          addSecurityHeaders(headers, null, {});
+          return new Response('Proxy configuration error: Invalid URL format', { status: 500, headers });
+        }
 
-      var targetUrl = new URL(request.url);
-      targetUrl.hostname = proxyUrl.hostname;
-      targetUrl.protocol = proxyUrl.protocol;
-      if (proxyUrl.port) {
-        targetUrl.port = proxyUrl.port;
+        const targetUrl = new URL(request.url);
+        targetUrl.hostname = proxyUrl.hostname;
+        targetUrl.protocol = proxyUrl.protocol;
+        if (proxyUrl.port) {
+          targetUrl.port = proxyUrl.port;
+        }
+        
+        const newRequest = new Request(targetUrl.toString(), {
+          method: request.method,
+          headers: request.headers,
+          body: request.body,
+          redirect: 'manual'
+        });
+        
+        newRequest.headers.set('Host', proxyUrl.hostname);
+        newRequest.headers.set('X-Forwarded-For', clientIp);
+        newRequest.headers.set('X-Forwarded-Proto', targetUrl.protocol.replace(':', ''));
+        newRequest.headers.set('X-Real-IP', clientIp);
+        
+        const response = await fetch(newRequest);
+        const mutableHeaders = new Headers(response.headers);
+        
+        mutableHeaders.delete('content-security-policy-report-only');
+        mutableHeaders.delete('x-frame-options');
+        
+        if (!mutableHeaders.has('Content-Security-Policy')) {
+          mutableHeaders.set('Content-Security-Policy', "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: *; frame-ancestors 'self';");
+        }
+        if (!mutableHeaders.has('X-Frame-Options')) {
+          mutableHeaders.set('X-Frame-Options', 'SAMEORIGIN');
+        }
+        if (!mutableHeaders.has('Strict-Transport-Security')) {
+          mutableHeaders.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+        }
+        if (!mutableHeaders.has('X-Content-Type-Options')) {
+          mutableHeaders.set('X-Content-Type-Options', 'nosniff');
+        }
+        if (!mutableHeaders.has('Referrer-Policy')) {
+          mutableHeaders.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+        }
+        
+        mutableHeaders.set('alt-svc', 'h3=":443"; ma=0');
+        
+        return new Response(response.body, {
+          status: response.status,
+          statusText: response.statusText,
+          headers: mutableHeaders
+        });
+      } catch (e) {
+        console.error(`Reverse Proxy Error: ${e.message}`, e.stack);
+        const headers = new Headers();
+        addSecurityHeaders(headers, null, {});
+        return new Response(`Proxy error: ${e.message}`, { status: 502, headers });
       }
-      
-      var newRequest = new Request(targetUrl.toString(), {
-        method: request.method,
-        headers: request.headers,
-        body: request.body,
-        redirect: 'manual'
-      });
-      
-      newRequest.headers.set('Host', proxyUrl.hostname);
-      newRequest.headers.set('X-Forwarded-For', clientIp);
-      newRequest.headers.set('X-Forwarded-Proto', targetUrl.protocol.replace(':', ''));
-      newRequest.headers.set('X-Real-IP', clientIp);
-      
-      var response = await fetch(newRequest);
-      var mutableHeaders = new Headers(response.headers);
-      
-      mutableHeaders.delete('content-security-policy-report-only');
-      mutableHeaders.delete('x-frame-options');
-      
-      if (!mutableHeaders.has('Content-Security-Policy')) {
-        mutableHeaders.set('Content-Security-Policy', "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: *; frame-ancestors 'self';");
-      }
-      if (!mutableHeaders.has('X-Frame-Options')) {
-        mutableHeaders.set('X-Frame-Options', 'SAMEORIGIN');
-      }
-      if (!mutableHeaders.has('Strict-Transport-Security')) {
-        mutableHeaders.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
-      }
-      if (!mutableHeaders.has('X-Content-Type-Options')) {
-        mutableHeaders.set('X-Content-Type-Options', 'nosniff');
-      }
-      if (!mutableHeaders.has('Referrer-Policy')) {
-        mutableHeaders.set('Referrer-Policy', 'strict-origin-when-cross-origin');
-      }
-      
-      mutableHeaders.set('alt-svc', 'h3=":443"; ma=0');
-      
-      return new Response(response.body, {
-        status: response.status,
-        statusText: response.statusText,
-        headers: mutableHeaders
-      });
     }
 
-    var headers = new Headers();
+    const headers = new Headers();
     addSecurityHeaders(headers, null, {});
-    return new Response('Not found', { status: 404, headers: headers });
-  }
-};
+    return new Response('Not found', { status: 404, headers });
+  },
+}
